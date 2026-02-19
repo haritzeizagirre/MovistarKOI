@@ -408,9 +408,13 @@ async function fetchPandaLive(): Promise<Match[]> {
  * Get past (finished) matches
  */
 export async function fetchPastMatches(): Promise<Match[]> {
+  console.log('[fetchPastMatches] called');
   const cacheKey = 'past-matches';
   const cached = getCached<Match[]>(cacheKey);
-  if (cached) return cached;
+  if (cached) {
+    console.log('[fetchPastMatches] returning cached:', cached.length, 'matches');
+    return cached;
+  }
 
   // Fetch from both sources in parallel
   const [pandaMatches, sggMatches] = await Promise.all([
@@ -421,6 +425,8 @@ export async function fetchPastMatches(): Promise<Match[]> {
     }),
   ]);
 
+  console.log('[fetchPastMatches] panda:', pandaMatches.length, 'sgg:', sggMatches.length);
+
   const allMatches = [...pandaMatches, ...sggMatches]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -430,21 +436,27 @@ export async function fetchPastMatches(): Promise<Match[]> {
 
 /** Internal: fetch past from PandaScore only */
 async function fetchPandaPast(): Promise<Match[]> {
-  if (!isApiConfigured()) return [];
+  if (!isApiConfigured()) {
+    console.log('[fetchPandaPast] API not configured');
+    return [];
+  }
   try {
     await initializeKoiTeams();
+    console.log('[fetchPandaPast] koiPandaTeamIds:', koiPandaTeamIds.length, koiPandaTeamIds);
     if (koiPandaTeamIds.length === 0) return [];
 
-    const pandaMatches = await pandaScoreAPI.getAllPastMatches(koiPandaTeamIds);
+    const pandaMatches = await pandaScoreAPI.getAllPastMatches(koiPandaTeamIds, 50);
+    console.log('[fetchPandaPast] raw pandaMatches:', pandaMatches.length);
     const mapped = pandaMatches
       .map((m) => mapPandaMatchToMatch(m, koiPandaTeamIds))
       .filter((m): m is Match => m !== null)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+    console.log('[fetchPandaPast] mapped matches:', mapped.length);
     await resolveStandings(mapped);
     return mapped;
   } catch (error) {
-    console.warn('PandaScore past error:', error);
+    console.warn('[fetchPandaPast] error:', error);
     return [];
   }
 }
@@ -565,7 +577,7 @@ export async function fetchMatchesByTeam(teamId: string): Promise<Match[]> {
     const [upcoming, live, past] = await Promise.all([
       pandaScoreAPI.getUpcomingMatchesByTeam(pandaId, 5),
       pandaScoreAPI.getLiveMatchesByTeam(pandaId),
-      pandaScoreAPI.getPastMatchesByTeam(pandaId, 5),
+      pandaScoreAPI.getPastMatchesByTeam(pandaId, 50),
     ]);
 
     const allPandaMatches = [...live, ...upcoming, ...past];

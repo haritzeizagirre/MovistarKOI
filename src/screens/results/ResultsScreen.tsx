@@ -14,6 +14,7 @@ import { Colors, Spacing, FontSize, BorderRadius } from '../../theme';
 import { Game, Match } from '../../types';
 import { useResultsData } from '../../hooks/usePandaScore';
 import { MatchCard, GameFilter } from '../../components';
+import { calculateMatchMilestones } from '../../utils/streakHelpers';
 import { LoadingIndicator, ErrorView } from '../../components/StatusViews';
 
 export default function ResultsScreen() {
@@ -28,13 +29,18 @@ export default function ResultsScreen() {
   const filteredLive = liveMatches;
   const filteredFinished = pastMatches;
 
+  // Calculate milestones
+  const milestones = React.useMemo(() => {
+    return calculateMatchMilestones(filteredFinished);
+  }, [filteredFinished]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await refresh();
     setRefreshing(false);
   };
 
-  if (loading && filteredLive.length === 0 && filteredFinished.length === 0) {
+  if (loading && liveMatches.length === 0 && pastMatches.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -46,16 +52,17 @@ export default function ResultsScreen() {
     );
   }
 
-  // Calculate W/L stats
-  const wins = filteredFinished.filter((m) => {
-    const koiIsHome =
-      m.homeTeam.tag.toUpperCase().includes('KOI') ||
-      m.homeTeam.name.toLowerCase().includes('koi');
-    const koiScore = koiIsHome ? m.homeTeam.score : m.awayTeam.score;
-    const oppScore = koiIsHome ? m.awayTeam.score : m.homeTeam.score;
-    return koiScore !== undefined && oppScore !== undefined && koiScore > oppScore;
-  }).length;
-  const losses = filteredFinished.length - wins;
+  if (error && liveMatches.length === 0 && pastMatches.length === 0) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>{t('results.title')}</Text>
+          <Text style={styles.subtitle}>Movistar KOI</Text>
+        </View>
+        <ErrorView message={error} onRetry={refresh} />
+      </SafeAreaView>
+    );
+  }
 
   const sections: { title: string; data: Match[]; key: string }[] = [];
   if (filteredLive.length > 0) {
@@ -75,32 +82,6 @@ export default function ResultsScreen() {
 
       <GameFilter selectedGame={selectedGame} onSelect={setSelectedGame} />
 
-      {/* Stats bar */}
-      {filteredFinished.length > 0 && (
-        <View style={styles.statsBar}>
-          <View style={styles.statItem}>
-            <View style={[styles.statDot, { backgroundColor: Colors.win }]} />
-            <Text style={styles.statValue}>{wins}</Text>
-            <Text style={styles.statLabel}>{t('results.win')}s</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <View style={[styles.statDot, { backgroundColor: Colors.loss }]} />
-            <Text style={styles.statValue}>{losses}</Text>
-            <Text style={styles.statLabel}>{t('results.loss')}s</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={[styles.statValue, { color: Colors.primary }]}>
-              {filteredFinished.length > 0
-                ? Math.round((wins / filteredFinished.length) * 100)
-                : 0}%
-            </Text>
-            <Text style={styles.statLabel}>Winrate</Text>
-          </View>
-        </View>
-      )}
-
       {sections.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="trophy-outline" size={48} color={Colors.textMuted} />
@@ -111,7 +92,7 @@ export default function ResultsScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MatchCard match={item} />}
+          renderItem={({ item }) => <MatchCard match={item} badges={milestones[item.id]} />}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
               {section.key === 'live' && (
@@ -165,43 +146,6 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 2,
     letterSpacing: 0.5,
-  },
-  statsBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    marginHorizontal: Spacing.md,
-    marginVertical: Spacing.sm,
-    borderRadius: BorderRadius.lg,
-    paddingVertical: Spacing.sm + 2,
-    paddingHorizontal: Spacing.lg,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  statDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statValue: {
-    color: Colors.textPrimary,
-    fontSize: FontSize.lg,
-    fontWeight: '700',
-  },
-  statLabel: {
-    color: Colors.textMuted,
-    fontSize: FontSize.xs,
-    marginLeft: 2,
-  },
-  statDivider: {
-    width: 1,
-    height: 20,
-    backgroundColor: Colors.border,
-    marginHorizontal: Spacing.md,
   },
   list: {
     paddingBottom: Spacing.xxl,

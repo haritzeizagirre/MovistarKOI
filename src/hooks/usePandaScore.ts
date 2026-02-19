@@ -23,7 +23,8 @@ interface AsyncState<T> {
 function useAsync<T>(
   fetcher: () => Promise<T>,
   deps: any[] = [],
-  autoRefreshMs?: number
+  autoRefreshMs?: number,
+  enabled: boolean = true
 ): AsyncState<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,10 +32,13 @@ function useAsync<T>(
   const mountedRef = useRef(true);
 
   const load = useCallback(async () => {
+    console.log('[useAsync] load called, enabled:', enabled);
+    if (!enabled) return;
     try {
       setLoading(true);
       setError(null);
       const result = await fetcher();
+      console.log('[useAsync] fetcher resolved, result length:', Array.isArray(result) ? result.length : 'N/A');
       if (mountedRef.current) {
         setData(result);
       }
@@ -47,15 +51,17 @@ function useAsync<T>(
         setLoading(false);
       }
     }
-  }, deps);
+  }, [...deps, enabled]);
 
   useEffect(() => {
     mountedRef.current = true;
-    load();
+    if (enabled) {
+      load();
+    }
     return () => {
       mountedRef.current = false;
     };
-  }, [load]);
+  }, [load, enabled]);
 
   // Auto-refresh (e.g. for live data)
   useEffect(() => {
@@ -71,16 +77,30 @@ function useAsync<T>(
 
 // ─── Initialization ────────────────────────────────────────────────
 
+let _initReady = false;
+
 export function useInitialize(): { ready: boolean; error: string | null } {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(_initReady);
   const [error, setError] = useState<string | null>(null);
+  console.log('[useInitialize] called, _initReady:', _initReady, 'ready state:', ready);
 
   useEffect(() => {
+    if (_initReady) {
+      console.log('[useInitialize] already ready, skipping init');
+      setReady(true);
+      return;
+    }
+    console.log('[useInitialize] starting initializeKoiTeams...');
     initializeKoiTeams()
-      .then(() => setReady(true))
+      .then(() => {
+        console.log('[useInitialize] initializeKoiTeams succeeded');
+        _initReady = true;
+        setReady(true);
+      })
       .catch((err) => {
-        console.warn('Init error:', err);
+        console.warn('[useInitialize] Init error:', err);
         setError(err.message);
+        _initReady = true;
         setReady(true); // Still allow app to load with fallback data
       });
   }, []);
@@ -109,7 +129,8 @@ export function useTeam(teamId: string) {
 // ─── Matches ───────────────────────────────────────────────────────
 
 export function useUpcomingMatches(gameFilter?: Game | 'all') {
-  const state = useAsync<Match[]>(() => fetchUpcomingMatches(), []);
+  const { ready } = useInitialize();
+  const state = useAsync<Match[]>(() => fetchUpcomingMatches(), [ready], undefined, ready);
 
   const filteredMatches =
     gameFilter && gameFilter !== 'all'
@@ -120,8 +141,9 @@ export function useUpcomingMatches(gameFilter?: Game | 'all') {
 }
 
 export function useLiveMatches(gameFilter?: Game | 'all') {
+  const { ready } = useInitialize();
   // Auto-refresh every 30 seconds
-  const state = useAsync<Match[]>(() => fetchLiveMatches(), [], 30_000);
+  const state = useAsync<Match[]>(() => fetchLiveMatches(), [ready], 30_000, ready);
 
   const filteredMatches =
     gameFilter && gameFilter !== 'all'
@@ -132,7 +154,8 @@ export function useLiveMatches(gameFilter?: Game | 'all') {
 }
 
 export function usePastMatches(gameFilter?: Game | 'all') {
-  const state = useAsync<Match[]>(() => fetchPastMatches(), []);
+  const { ready } = useInitialize();
+  const state = useAsync<Match[]>(() => fetchPastMatches(), [ready], undefined, ready);
 
   const filteredMatches =
     gameFilter && gameFilter !== 'all'

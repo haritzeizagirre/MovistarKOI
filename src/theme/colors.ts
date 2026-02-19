@@ -39,6 +39,9 @@ export const Colors = {
   cod: '#4CAF50',           // Call of Duty green
   pokemon: '#FFCB05',       // Pokémon yellow
 
+  // Streak colors
+  fire: '#E74C3C',          // Red-Orange
+  ice: '#3498DB',           // Blue
 };
 
 export const Spacing = {

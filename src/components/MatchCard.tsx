@@ -6,13 +6,16 @@ import { Match, Game } from '../types';
 import { gameColors } from '../data/mockData';
 import { useTranslation } from 'react-i18next';
 
+export type MatchBadge = 'fire' | 'ice' | 'trophy';
+
 interface MatchCardProps {
   match: Match;
   onPress?: () => void;
   compact?: boolean;
+  badges?: MatchBadge[];
 }
 
-export default function MatchCard({ match, onPress, compact = false }: MatchCardProps) {
+export default function MatchCard({ match, onPress, compact = false, badges = [] }: MatchCardProps) {
   const { t } = useTranslation();
   const gameColor = gameColors[match.game];
 
@@ -82,6 +85,34 @@ export default function MatchCard({ match, onPress, compact = false }: MatchCard
               {match.tournament}
             </Text>
           </View>
+
+          {/* Badges */}
+          {badges.length > 0 && (
+            <View style={styles.badgesContainer}>
+              {badges.map((badge, index) => (
+                <View
+                  key={`badge-${index}`}
+                  style={[
+                    styles.badgeIcon,
+                    badge === 'fire' && styles.fireBadge,
+                    badge === 'ice' && styles.iceBadge,
+                    badge === 'trophy' && styles.trophyBadge,
+                  ]}
+                >
+                  <Ionicons
+                    name={badge === 'fire' ? 'flame' : badge === 'ice' ? 'snow' : 'trophy'}
+                    size={10}
+                    color={
+                      badge === 'fire' ? Colors.fire :
+                        badge === 'ice' ? Colors.ice :
+                          '#FFC107' // Gold for trophy
+                    }
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+
           {isLive && (
             <View style={styles.liveBadge}>
               <View style={styles.liveDot} />
@@ -254,6 +285,32 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     flex: 1,
     letterSpacing: 0.3,
+  },
+  badgesContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginRight: 8,
+  },
+  badgeIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  fireBadge: {
+    backgroundColor: Colors.fire + '20', // 20% opacity
+    borderColor: Colors.fire,
+  },
+  iceBadge: {
+    backgroundColor: Colors.ice + '20',
+    borderColor: Colors.ice,
+  },
+  trophyBadge: {
+    backgroundColor: '#FFC107' + '20',
+    borderColor: '#FFC107',
   },
   liveBadge: {
     flexDirection: 'row',

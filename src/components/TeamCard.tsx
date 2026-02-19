@@ -11,9 +11,16 @@ interface TeamCardProps {
   onPress: () => void;
 }
 
+import { useTeamMatches } from '../hooks/usePandaScore';
+import { calculateCurrentStreak } from '../utils/streakHelpers';
+
 export default function TeamCard({ team, onPress }: TeamCardProps) {
   const { t } = useTranslation();
   const gameColor = gameColors[team.game];
+
+  // Fetch matches to calculate streak
+  const { allMatches } = useTeamMatches(team.id);
+  const streak = calculateCurrentStreak(allMatches || [], team.id);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.8}>
@@ -29,9 +36,26 @@ export default function TeamCard({ team, onPress }: TeamCardProps) {
           </View>
         </View>
         <View style={styles.info}>
-          <Text style={styles.teamName} numberOfLines={1}>
-            {team.name}
-          </Text>
+          <View style={styles.nameRow}>
+            <Text style={styles.teamName} numberOfLines={1}>
+              {team.name}
+            </Text>
+            {streak.count >= 5 && streak.type && (
+              <View style={styles.streakContainer}>
+                <Ionicons
+                  name={streak.type === 'fire' ? 'flame' : 'snow'}
+                  size={14}
+                  color={streak.type === 'fire' ? Colors.win : Colors.ice}
+                />
+                <Text style={[
+                  styles.streakText,
+                  { color: streak.type === 'fire' ? Colors.win : Colors.ice }
+                ]}>
+                  {streak.count}
+                </Text>
+              </View>
+            )}
+          </View>
           <View style={styles.metaRow}>
             <View style={[styles.badge, { backgroundColor: gameColor + '20' }]}>
               <Text style={[styles.badgeText, { color: gameColor }]}>
@@ -95,7 +119,27 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     fontSize: FontSize.lg,
     fontWeight: '700',
+    marginRight: 8,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 4,
+  },
+  streakContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.round,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  streakText: {
+    fontSize: FontSize.xs,
+    fontWeight: '700',
   },
   metaRow: {
     flexDirection: 'row',
