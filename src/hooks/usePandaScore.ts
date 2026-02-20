@@ -155,7 +155,10 @@ export function useLiveMatches(gameFilter?: Game | 'all') {
 
 export function usePastMatches(gameFilter?: Game | 'all') {
   const { ready } = useInitialize();
-  const state = useAsync<Match[]>(() => fetchPastMatches(), [ready], undefined, ready);
+  const state = useAsync<Match[]>(() => {
+    console.log('[usePastMatches] calling fetchPastMatches...');
+    return fetchPastMatches();
+  }, [ready], undefined, ready);
 
   const filteredMatches =
     gameFilter && gameFilter !== 'all'
@@ -173,6 +176,20 @@ export function useTeamMatches(teamId: string) {
   const past = (state.data || []).filter((m) => m.status === 'finished');
 
   return { ...state, upcoming, live, past, allMatches: state.data || [] };
+}
+
+export function useMatchDetails(matchId: string) {
+  const { ready } = useInitialize();
+  // We use string matchId here, fetchMatchDetails handles the conversion
+  return useAsync<Match | undefined>(
+    () => {
+      // DataService fetchMatchDetails expects the full panda-match-ID string
+      return import('../services/dataService').then((m) => m.fetchMatchDetails(matchId));
+    },
+    [matchId, ready],
+    undefined,
+    ready && Boolean(matchId)
+  );
 }
 
 // ─── Combined calendar data ────────────────────────────────────────

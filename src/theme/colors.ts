@@ -42,6 +42,11 @@ export const Colors = {
   // Streak colors
   fire: '#E74C3C',          // Red-Orange
   ice: '#3498DB',           // Blue
+
+  // UI Specific
+  surfaceHover: '#2A1D3C',
+  blueTeam: '#3498DB',
+  redTeam: '#E74C3C',
 };
 
 export const Spacing = {

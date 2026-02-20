@@ -15,9 +15,15 @@ import { Game, Match } from '../../types';
 import { useCalendarData } from '../../hooks/usePandaScore';
 import { MatchCard, GameFilter } from '../../components';
 import { LoadingIndicator, ErrorView } from '../../components/StatusViews';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { CalendarStackParamList } from '../../types';
+
+type CalendarNavigationProp = NativeStackNavigationProp<CalendarStackParamList, 'CalendarMain'>;
 
 export default function CalendarScreen() {
   const { t } = useTranslation();
+  const navigation = useNavigation<CalendarNavigationProp>();
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -103,7 +109,12 @@ export default function CalendarScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MatchCard match={item} />}
+          renderItem={({ item }) => (
+            <MatchCard
+              match={item}
+              onPress={() => navigation.navigate('MatchDetail', { matchId: item.id })}
+            />
+          )}
           renderSectionHeader={({ section }) => {
             const isToday = new Date(section.raw).toDateString() === new Date().toDateString();
             return (

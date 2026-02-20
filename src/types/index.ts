@@ -71,13 +71,58 @@ export interface Match {
   awayTeam: MatchTeam;
   bestOf: number;            // Bo1, Bo3, Bo5
   streamUrl?: string;
+  games?: MatchGame[];       // Detailed data per game in the series
 }
 
 export interface MatchTeam {
+  id?: string;
   name: string;
   tag: string;
   logoUrl: string;
   score?: number;
+}
+
+// ─── Match Details (Games/Maps) ──────────────────────────
+export interface MatchGame {
+  id: string;
+  number: number;
+  status: MatchStatus;
+  map?: MatchMap;
+  winnerId?: string;
+  length?: number; // duration in seconds
+  homeTeamScore?: number; // e.g., round wins in Valorant
+  awayTeamScore?: number;
+  draft?: MatchDraft; // for LoL / Valorant
+}
+
+export interface MatchMap {
+  id: string;
+  name: string;
+  imageUrl?: string;
+}
+
+export interface MatchDraft {
+  homeTeamDetails?: DraftTeamDetails;
+  awayTeamDetails?: DraftTeamDetails;
+}
+
+export interface DraftTeamDetails {
+  picks: DraftPick[];
+  bans: DraftBan[];
+  side?: 'blue' | 'red' | 'attacker' | 'defender'; // LoL sides or Valo starting sides
+}
+
+export interface DraftPick {
+  championId: string;
+  championName: string;
+  championImageUrl?: string;
+  playerId?: string;
+}
+
+export interface DraftBan {
+  championId: string;
+  championName: string;
+  championImageUrl?: string;
 }
 
 // ─── Notification Preference ─────────────────────────────

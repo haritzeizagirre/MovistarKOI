@@ -16,9 +16,15 @@ import { useResultsData } from '../../hooks/usePandaScore';
 import { MatchCard, GameFilter } from '../../components';
 import { calculateMatchMilestones } from '../../utils/streakHelpers';
 import { LoadingIndicator, ErrorView } from '../../components/StatusViews';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ResultsStackParamList } from '../../types';
+
+type ResultsNavigationProp = NativeStackNavigationProp<ResultsStackParamList, 'ResultsMain'>;
 
 export default function ResultsScreen() {
   const { t } = useTranslation();
+  const navigation = useNavigation<ResultsNavigationProp>();
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -92,7 +98,13 @@ export default function ResultsScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MatchCard match={item} badges={milestones[item.id]} />}
+          renderItem={({ item }) => (
+            <MatchCard
+              match={item}
+              badges={milestones[item.id]}
+              onPress={() => navigation.navigate('MatchDetail', { matchId: item.id })}
+            />
+          )}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
               {section.key === 'live' && (

@@ -67,6 +67,7 @@ export interface PandaMatch {
   };
   opponents: PandaOpponent[];
   results: PandaResult[];
+  games?: PandaGame[];
   streams_list: PandaStream[];
   live?: {
     opens_at: string | null;
@@ -79,6 +80,37 @@ export interface PandaMatch {
     acronym: string;
   };
   forfeit: boolean;
+}
+
+export interface PandaGame {
+  id: number;
+  position: number;
+  status: 'not_started' | 'running' | 'finished';
+  winner?: { id: number; type: string };
+  winner_type?: string;
+  match_id: number;
+  forfeit: boolean;
+  length?: number; // seconds
+  begin_at?: string;
+  end_at?: string;
+}
+
+// These types are mostly for LoL / Valorant specific detailed match endpoints
+export interface PandaPick {
+  champion?: {
+    id: number;
+    name: string;
+    image_url: string | null;
+  };
+  player_id?: number | null;
+}
+
+export interface PandaBan {
+  champion?: {
+    id: number;
+    name: string;
+    image_url: string | null;
+  };
 }
 
 export interface PandaOpponent {
@@ -270,6 +302,22 @@ class PandaScoreAPI {
       'sort': '-scheduled_at',
       'per_page': String(perPage),
     });
+  }
+
+  /** Get detailed match info, including games/maps */
+  async getMatchById(matchId: number): Promise<PandaMatch> {
+    return this.fetch<PandaMatch>(`/matches/${matchId}`);
+  }
+
+  // ─── LoL/Valorant Specific Draf/Games APIs ───────────────
+
+  /** Fetch a specific game of a match, useful for LoL where drafts are inside */
+  async getLolGameById(gameId: number): Promise<any> {
+    return this.fetch<any>(`/lol/games/${gameId}`);
+  }
+
+  async getValorantGameById(gameId: number): Promise<any> {
+    return this.fetch<any>(`/valorant/games/${gameId}`);
   }
 
   // ─── KOI-specific helpers ────────────────────────────────────
