@@ -56,3 +56,11 @@ export const STARTGG_TRACKED_TOURNAMENT_SLUGS: Record<string, string[]> = {
   tft: [],           // e.g. ['tournament/tft-emea-pro-circuit-2026']
   pokemon_vgc: [],   // e.g. ['tournament/2026-pokemon-madrid-regional']
 };
+
+/**
+ * Minimum number of attendees for a tournament fetched by videogame ID
+ * to be shown in the app. Filters out tiny locals / test events.
+ * Only applies to the videogame-ID fallback; player-based and slug-based
+ * tournaments are always shown regardless of size.
+ */
+export const STARTGG_MIN_ATTENDEES = 16;

@@ -81,35 +81,59 @@ function useAsync<T>(
 
 // ─── Initialization ────────────────────────────────────────────────
 
+/**
+ * Shared initialization state.
+ * All hook instances read/write the same module-level vars so every
+ * `useInitialize()` call (from different hooks) stays in sync.
+ */
 let _initReady = false;
+let _initError: string | null = null;
+/** Listeners that get notified when init finishes. */
+const _initListeners = new Set<() => void>();
+
+function _notifyListeners() {
+  _initListeners.forEach((fn) => fn());
+}
+
+/** Module-level init trigger — runs only once, all callers share the result. */
+let _initStarted = false;
+function _ensureInit() {
+  if (_initStarted) return;
+  _initStarted = true;
+  console.log('[useInitialize] starting initializeKoiTeams...');
+  initializeKoiTeams()
+    .then(() => {
+      console.log('[useInitialize] initializeKoiTeams succeeded');
+    })
+    .catch((err) => {
+      console.warn('[useInitialize] Init error:', err);
+      _initError = err.message;
+    })
+    .finally(() => {
+      _initReady = true;
+      _notifyListeners();
+    });
+}
 
 export function useInitialize(): { ready: boolean; error: string | null } {
-  const [ready, setReady] = useState(_initReady);
-  const [error, setError] = useState<string | null>(null);
-  console.log('[useInitialize] called, _initReady:', _initReady, 'ready state:', ready);
+  const [, forceUpdate] = useState(0);
 
   useEffect(() => {
-    if (_initReady) {
-      console.log('[useInitialize] already ready, skipping init');
-      setReady(true);
-      return;
-    }
-    console.log('[useInitialize] starting initializeKoiTeams...');
-    initializeKoiTeams()
-      .then(() => {
-        console.log('[useInitialize] initializeKoiTeams succeeded');
-        _initReady = true;
-        setReady(true);
-      })
-      .catch((err) => {
-        console.warn('[useInitialize] Init error:', err);
-        setError(err.message);
-        _initReady = true;
-        setReady(true); // Still allow app to load with fallback data
-      });
+    // If already done before this mount, no need to subscribe
+    if (_initReady) return;
+
+    const listener = () => forceUpdate((n) => n + 1);
+    _initListeners.add(listener);
+
+    // Kick off init (no-op if already started)
+    _ensureInit();
+
+    return () => {
+      _initListeners.delete(listener);
+    };
   }, []);
 
-  return { ready, error };
+  return { ready: _initReady, error: _initError };
 }
 
 // ─── Teams ─────────────────────────────────────────────────────────

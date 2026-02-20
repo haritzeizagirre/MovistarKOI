@@ -88,6 +88,7 @@ export interface MatchGame {
   number: number;
   status: MatchStatus;
   map?: MatchMap;
+  gameMode?: string; // e.g., "Hardpoint", "Search & Destroy", "Control" for CoD
   winnerId?: string;
   length?: number; // duration in seconds
   beginAt?: string; // game start time

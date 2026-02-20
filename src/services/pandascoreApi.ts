@@ -176,6 +176,9 @@ export interface PandaStanding {
 
 // ─── API Client ────────────────────────────────────────────────────
 
+/** Max time (ms) to wait for a single PandaScore API request */
+const PANDASCORE_REQUEST_TIMEOUT = 10_000; // 10 seconds
+
 class PandaScoreAPI {
   private baseUrl = PANDASCORE_BASE_URL;
   private token = PANDASCORE_API_KEY;
@@ -189,14 +192,26 @@ class PandaScoreAPI {
     }
     url.searchParams.append('token', this.token);
 
-    const response = await fetch(url.toString());
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PANDASCORE_REQUEST_TIMEOUT);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`PandaScore API error ${response.status}: ${errorText}`);
+    try {
+      const response = await fetch(url.toString(), { signal: controller.signal });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`PandaScore API error ${response.status}: ${errorText}`);
+      }
+
+      return response.json() as Promise<T>;
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        throw new Error(`PandaScore request timed out after ${PANDASCORE_REQUEST_TIMEOUT}ms: ${endpoint}`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-
-    return response.json() as Promise<T>;
   }
 
   // ─── Teams ──────────────────────────────────────────────────────

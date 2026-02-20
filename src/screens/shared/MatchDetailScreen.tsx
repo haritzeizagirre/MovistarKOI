@@ -139,6 +139,17 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                                 let title = `Game ${g.number}`;
                                 if (match.game === 'valorant' && g.map) {
                                     title = g.map.name;
+                                } else if (match.game === 'call_of_duty') {
+                                    // Show mode + map for CoD (e.g., "HP Karachi")
+                                    const parts: string[] = [];
+                                    if (g.gameMode) {
+                                        const modeShorts: Record<string, string> = {
+                                            'Hardpoint': 'HP', 'Search & Destroy': 'S&D', 'Control': 'CTL',
+                                        };
+                                        parts.push(modeShorts[g.gameMode] || g.gameMode);
+                                    }
+                                    if (g.map) parts.push(g.map.name);
+                                    if (parts.length > 0) title = parts.join(' ');
                                 }
 
                                 let gameWinnerIcon = null;
@@ -196,12 +207,22 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                                 )}
                                 <View style={styles.mapOverlay}>
                                     <Text style={styles.mapNameText}>{activeGame.map.name}</Text>
+                                    {activeGame.gameMode && (
+                                        <Text style={styles.gameModeText}>{activeGame.gameMode}</Text>
+                                    )}
                                     {activeGame.homeTeamScore !== undefined && activeGame.awayTeamScore !== undefined && (
                                         <Text style={styles.mapScoreText}>
                                             {activeGame.homeTeamScore} - {activeGame.awayTeamScore}
                                         </Text>
                                     )}
                                 </View>
+                            </View>
+                        )}
+                        {/* Game mode without map (CoD fallback when map image unavailable) */}
+                        {!activeGame.map && activeGame.gameMode && (
+                            <View style={styles.gameModeBadge}>
+                                <Ionicons name="game-controller-outline" size={16} color={Colors.textSecondary} />
+                                <Text style={styles.gameModeBadgeText}>{activeGame.gameMode}</Text>
                             </View>
                         )}
 
@@ -549,6 +570,30 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xl,
         fontWeight: '900',
         marginTop: 4,
+    },
+    gameModeText: {
+        color: 'rgba(255,255,255,0.8)',
+        fontSize: FontSize.sm,
+        fontWeight: '600',
+        marginTop: 2,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    gameModeBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        backgroundColor: Colors.surface,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.sm,
+        borderRadius: BorderRadius.md,
+        marginBottom: Spacing.sm,
+    },
+    gameModeBadgeText: {
+        color: Colors.textSecondary,
+        fontSize: FontSize.md,
+        fontWeight: '600',
     },
     draftContainer: {
         padding: Spacing.md,

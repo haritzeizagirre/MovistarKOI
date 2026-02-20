@@ -1,28 +1,43 @@
 /**
- * start.gg Data Service
+ * Tournament Data Service
  *
- * Maps start.gg tournament data into the app's Tournament type.
- * Covers TFT and Pokémon VGC only (PandaScore handles LoL, Valorant, CoD).
+ * Provides TFT and Pokemon VGC tournament data for KOI players.
  *
- * Strategy (in priority order):
- * 1. Query tournaments by KOI player user IDs (if configured in startgg config)
- * 2. Fetch specific tracked tournament slugs (if configured)
- * 3. Fall back to curated/mock tournament data (always available)
+ * Primary source: Liquipedia API (automated)
+ * - Parses KOI team pages on Liquipedia to extract tournament results
+ * - Automatically picks up new results as they appear on Liquipedia
  *
- * This ensures only tournaments where KOI players participate are shown,
- * not every random community event for the videogame.
+ * Fallback source: Curated tournament data (src/data/curatedTournaments.ts)
+ * - Used when Liquipedia is unreachable or for upcoming tournaments
+ * - Upcoming events that haven't happened yet won't appear on Liquipedia,
+ *   so they must still be added manually to curatedTournaments.ts
+ *
+ * Tertiary source (optional): start.gg API
+ * - Only used when player user IDs or tournament slugs are configured
+ * - Results are merged (no duplicates)
  */
 
 import startGGClient, { StartGGTournament } from './startggApi';
-import { Tournament, TournamentFormat, TournamentPhase, TournamentParticipant, Game } from '../types';
+import { Tournament, TournamentFormat, TournamentPhase, TournamentParticipant, Game, MatchStatus } from '../types';
 import {
   STARTGG_VIDEOGAME_IDS,
   STARTGG_PLAYER_USER_IDS,
   STARTGG_TRACKED_TOURNAMENT_SLUGS,
 } from '../config/startgg';
 import { staticTeams } from '../data/staticTeams';
+import {
+  allCuratedTournaments,
+  getCuratedTournamentsByStatus,
+  getCuratedTournamentsByTeam,
+  getCuratedTournamentById,
+} from '../data/curatedTournaments';
+import {
+  fetchAllLiquipediaTournaments,
+  fetchLiquipediaTournamentsByGame,
+  clearLiquipediaCache,
+} from './liquipediaService';
 
-// ─── Cache ─────────────────────────────────────────────────────────
+// --- Cache ---------------------------------------------------------------
 
 interface CacheEntry<T> {
   data: T;
@@ -44,7 +59,7 @@ function setCache<T>(key: string, data: T): void {
   sggCache[key] = { data, timestamp: Date.now() };
 }
 
-// ─── Helpers ───────────────────────────────────────────────────────
+// --- start.gg helpers (kept for optional supplement) ---------------------
 
 /** Map start.gg videogame ID to our Game type */
 function videogameIdToGame(vgId: number): Game | null {
@@ -62,37 +77,29 @@ function inferGameFromTournament(tournament: StartGGTournament): Game | null {
         const game = videogameIdToGame(event.videogame.id);
         if (game) return game;
       }
-      // Fallback: check event/videogame name
       const vgName = (event.videogame?.name || event.name || '').toLowerCase();
       if (vgName.includes('tft') || vgName.includes('teamfight')) return 'tft';
-      if (vgName.includes('pokémon') || vgName.includes('pokemon') || vgName.includes('vgc')) return 'pokemon_vgc';
+      if (vgName.includes('pokemon') || vgName.includes('vgc')) return 'pokemon_vgc';
     }
   }
-  // Fallback: check tournament name
   const tName = tournament.name.toLowerCase();
   if (tName.includes('tft') || tName.includes('teamfight')) return 'tft';
-  if (tName.includes('pokémon') || tName.includes('pokemon') || tName.includes('vgc')) return 'pokemon_vgc';
+  if (tName.includes('pokemon') || tName.includes('vgc')) return 'pokemon_vgc';
   return null;
 }
 
-/**
- * Check if a tournament has at least one event for a game we care about.
- */
 function hasRelevantEvent(tournament: StartGGTournament): boolean {
   return inferGameFromTournament(tournament) !== null;
 }
 
-/** Map a tournament's state to our MatchStatus */
-function tournamentStateToStatus(state: number | null): 'upcoming' | 'live' | 'finished' {
+function tournamentStateToStatus(state: number | null): MatchStatus {
   switch (state) {
-    case 2: return 'live';    // Active
-    case 3: return 'finished'; // Completed
-    case 1: // Created
+    case 2: return 'live';
+    case 3: return 'finished';
     default: return 'upcoming';
   }
 }
 
-/** Get the right static team ID for a game */
 function getStaticTeamId(game: Game): string {
   switch (game) {
     case 'tft': return 'static-tft';
@@ -101,24 +108,6 @@ function getStaticTeamId(game: Game): string {
   }
 }
 
-/** Get the KOI logo URL */
-const KOI_LOGO = 'https://liquipedia.net/commons/images/thumb/5/54/KOI_2024_blue_allmode.png/600px-KOI_2024_blue_allmode.png';
-
-/** Get tournament image URL from images array */
-function getTournamentImage(tournament: StartGGTournament): string {
-  if (tournament.images && tournament.images.length > 0) {
-    const profile = tournament.images.find((img) => img.type === 'profile');
-    return (profile || tournament.images[0]).url;
-  }
-  return '';
-}
-
-/** Get tournament URL on start.gg */
-function getTournamentUrl(tournament: StartGGTournament): string {
-  return `https://start.gg/${tournament.slug}`;
-}
-
-/** Determine tournament format based on the game */
 function inferTournamentFormat(game: Game): TournamentFormat {
   switch (game) {
     case 'tft': return 'points_elimination';
@@ -127,65 +116,61 @@ function inferTournamentFormat(game: Game): TournamentFormat {
   }
 }
 
-/** Build tournament phases from the event data and dates */
+function getTournamentImage(tournament: StartGGTournament): string {
+  if (tournament.images && tournament.images.length > 0) {
+    const profile = tournament.images.find((img) => img.type === 'profile');
+    return (profile || tournament.images[0]).url;
+  }
+  return '';
+}
+
+function getTournamentUrl(tournament: StartGGTournament): string {
+  return `https://start.gg/${tournament.slug}`;
+}
+
 function buildPhases(tournament: StartGGTournament, game: Game): TournamentPhase[] {
-  const phases: TournamentPhase[] = [];
   const status = tournamentStateToStatus(tournament.state);
+  const phases: TournamentPhase[] = [];
 
   if (game === 'tft') {
-    // TFT tournaments typically have elimination rounds over 2-3 days
     const startDate = tournament.startAt ? new Date(tournament.startAt * 1000) : null;
     const endDate = tournament.endAt ? new Date(tournament.endAt * 1000) : null;
-
     if (startDate && endDate) {
       const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
       for (let d = 1; d <= Math.min(days, 3); d++) {
-        let phaseName: string;
-        let phaseDesc: string;
-        if (d === 1) {
-          phaseName = `Day ${d} — Open Lobbies`;
-          phaseDesc = '8-player lobbies, points per placement. Bottom players eliminated.';
-        } else if (d < days) {
-          phaseName = `Day ${d} — Elimination`;
-          phaseDesc = 'Remaining players compete. More eliminations.';
-        } else {
-          phaseName = `Day ${d} — Grand Finals`;
-          phaseDesc = 'Final 8 players. First to checkmate (18-20 pts + Top 1).';
-        }
+        const phaseName = d === 1 ? 'Day 1 - Open Lobbies'
+          : d < days ? `Day ${d} - Elimination`
+          : `Day ${d} - Grand Finals`;
         phases.push({
           name: phaseName,
           day: d,
-          status: status === 'finished' ? 'finished' : status === 'live' ? (d === 1 ? 'live' : 'upcoming') : 'upcoming',
-          description: phaseDesc,
+          status: status === 'finished' ? 'finished' : 'upcoming',
+          description: d === 1 ? '8-player lobbies. Bottom players eliminated.'
+            : d < days ? 'Remaining players compete.'
+            : 'Final 8 players.',
         });
       }
     } else {
-      phases.push({ name: 'Tournament', day: 1, status, description: 'Points-based elimination format.' });
+      phases.push({ name: 'Tournament', day: 1, status, description: 'Points-based elimination.' });
     }
   } else if (game === 'pokemon_vgc') {
-    // Pokémon VGC: Day 1 Swiss, Day 2 Top Cut
     phases.push({
-      name: 'Day 1 — Swiss Rounds',
-      day: 1,
+      name: 'Day 1 - Swiss Rounds', day: 1,
       status: status === 'finished' ? 'finished' : status,
-      description: 'Players matched by W/L record. Top players qualify to Day 2.',
+      description: 'Players matched by W/L record.',
     });
     phases.push({
-      name: 'Day 2 — Top Cut',
-      day: 2,
+      name: 'Day 2 - Top Cut', day: 2,
       status: status === 'finished' ? 'finished' : 'upcoming',
-      description: 'Single elimination bracket until a champion is crowned.',
+      description: 'Single elimination bracket.',
     });
   }
-
   return phases;
 }
 
-/** Get KOI participants from the static team data */
 function getKoiParticipants(game: Game): TournamentParticipant[] {
   const team = staticTeams.find((t) => t.game === game);
   if (!team) return [];
-
   return team.members.map((player) => ({
     playerId: player.id,
     playerName: player.nickname,
@@ -193,30 +178,20 @@ function getKoiParticipants(game: Game): TournamentParticipant[] {
   }));
 }
 
-/**
- * Map a start.gg tournament to our Tournament type.
- * For individual games (TFT, Pokemon VGC), we model the tournament
- * properly with phases, participants, and format info.
- */
-function mapTournamentToTournament(sggTournament: StartGGTournament): Tournament | null {
+/** Map a start.gg tournament to our Tournament type */
+function mapSGGTournament(sggTournament: StartGGTournament): Tournament | null {
   const game = inferGameFromTournament(sggTournament);
   if (!game) return null;
 
   const status = tournamentStateToStatus(sggTournament.state);
-  const startAt = sggTournament.startAt
-    ? new Date(sggTournament.startAt * 1000)
-    : new Date();
-  const endAt = sggTournament.endAt
-    ? new Date(sggTournament.endAt * 1000)
-    : undefined;
+  const startAt = sggTournament.startAt ? new Date(sggTournament.startAt * 1000) : new Date();
+  const endAt = sggTournament.endAt ? new Date(sggTournament.endAt * 1000) : undefined;
 
-  // Location info
   const locationParts = [sggTournament.city, sggTournament.countryCode].filter(Boolean);
   const location = locationParts.length > 0
     ? locationParts.join(', ')
     : (sggTournament.isOnline ? 'Online' : undefined);
 
-  // Get total participants from events
   const totalParticipants = sggTournament.numAttendees
     ?? sggTournament.events?.reduce((sum, e) => sum + (e.numEntrants || 0), 0)
     ?? undefined;
@@ -229,11 +204,7 @@ function mapTournamentToTournament(sggTournament: StartGGTournament): Tournament
     location,
     startDate: startAt.toISOString().split('T')[0],
     endDate: endAt ? endAt.toISOString().split('T')[0] : undefined,
-    time: startAt.toLocaleTimeString('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    }),
+    time: startAt.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false }),
     status,
     format: inferTournamentFormat(game),
     totalParticipants,
@@ -245,195 +216,240 @@ function mapTournamentToTournament(sggTournament: StartGGTournament): Tournament
   };
 }
 
-// ─── Core fetch: by player IDs, then by slug, else empty ──────────
+// --- start.gg targeted fetch (only with player IDs / slugs) --------------
 
-/**
- * Check if we have any player-based or slug-based config for start.gg.
- * If not, the caller should fall back to curated data.
- */
-export function hasStartGGSources(): boolean {
+/** Check if we have player-based or slug-based config for start.gg */
+function hasTargetedSources(): boolean {
   const hasPlayers = Object.values(STARTGG_PLAYER_USER_IDS).some((ids) => ids.length > 0);
   const hasSlugs = Object.values(STARTGG_TRACKED_TOURNAMENT_SLUGS).some((slugs) => slugs.length > 0);
-  return startGGClient.isConfigured() && (hasPlayers || hasSlugs);
+  return hasPlayers || hasSlugs;
 }
 
 /**
- * Fetch all KOI-related tournaments from start.gg.
- * Queries by player user ID (if available) and by tracked slugs.
- * Deduplicates and returns unified list.
+ * Fetch KOI-specific tournaments from start.gg.
+ * Only queries if player IDs or slugs are configured.
+ * Does NOT fall back to broad videogame queries.
  */
-async function fetchKoiTournaments(): Promise<StartGGTournament[]> {
-  if (!startGGClient.isConfigured()) return [];
+async function fetchTargetedSGGTournaments(): Promise<Tournament[]> {
+  if (!startGGClient.isConfigured() || !hasTargetedSources()) return [];
 
   const seenIds = new Set<number>();
-  const allTournaments: StartGGTournament[] = [];
+  const results: StartGGTournament[] = [];
 
-  // 1. Query by player user IDs
+  // Player user IDs
   const playerIds = Object.values(STARTGG_PLAYER_USER_IDS).flat();
   if (playerIds.length > 0) {
-    console.log('[startggDataService] querying tournaments for', playerIds.length, 'player(s)');
-    const playerPromises = playerIds.map((uid) =>
-      startGGClient.getUserTournaments(uid, 1, 15).catch((e) => {
-        console.warn(`[startggDataService] failed for user ${uid}:`, e);
-        return [] as StartGGTournament[];
-      })
+    const promises = playerIds.map((uid) =>
+      startGGClient.getUserTournaments(uid, 1, 15).catch(() => [] as StartGGTournament[])
     );
-    const results = await Promise.all(playerPromises);
-    for (const tournaments of results) {
+    for (const tournaments of await Promise.all(promises)) {
       for (const t of tournaments) {
         if (!seenIds.has(t.id) && hasRelevantEvent(t)) {
           seenIds.add(t.id);
-          allTournaments.push(t);
+          results.push(t);
         }
       }
     }
   }
 
-  // 2. Fetch specific tracked tournament slugs
+  // Tracked slugs
   const slugs = Object.values(STARTGG_TRACKED_TOURNAMENT_SLUGS).flat();
   if (slugs.length > 0) {
-    console.log('[startggDataService] fetching', slugs.length, 'tracked slug(s)');
-    const slugPromises = slugs.map((slug) =>
-      startGGClient.getTournamentBySlug(slug).catch((e) => {
-        console.warn(`[startggDataService] failed for slug ${slug}:`, e);
-        return null;
-      })
+    const promises = slugs.map((slug) =>
+      startGGClient.getTournamentBySlug(slug).catch(() => null)
     );
-    const results = await Promise.all(slugPromises);
-    for (const t of results) {
+    for (const t of await Promise.all(promises)) {
       if (t && !seenIds.has(t.id) && hasRelevantEvent(t)) {
         seenIds.add(t.id);
-        allTournaments.push(t);
+        results.push(t);
       }
     }
   }
 
-  console.log('[startggDataService] total KOI tournaments found:', allTournaments.length);
-  return allTournaments;
+  return results
+    .map(mapSGGTournament)
+    .filter((t): t is Tournament => t !== null);
 }
 
-// ─── Public API ────────────────────────────────────────────────────
+// --- Merge sources (deduplicated by name) --------------------------------
 
 /**
- * Check if start.gg API is configured
+ * Merge multiple tournament arrays, deduplicating by normalized name.
+ * Earlier sources have priority (first occurrence wins).
  */
+function mergeTournaments(...sources: Tournament[][]): Tournament[] {
+  const seen = new Set<string>();
+  const result: Tournament[] = [];
+
+  for (const source of sources) {
+    for (const t of source) {
+      const key = t.name.toLowerCase().replace(/\s+/g, ' ').trim();
+      if (!seen.has(key)) {
+        seen.add(key);
+        result.push(t);
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Fetch all Liquipedia tournaments with curated fallback.
+ * Returns combined list: Liquipedia (auto) + curated-only upcoming entries.
+ */
+async function fetchLiquipediaWithFallback(): Promise<Tournament[]> {
+  try {
+    const lpTournaments = await fetchAllLiquipediaTournaments();
+
+    if (lpTournaments.length > 0) {
+      // Liquipedia worked — merge curated upcoming-only entries that aren't in LP
+      const curatedUpcoming = getCuratedTournamentsByStatus('upcoming');
+      return mergeTournaments(lpTournaments, curatedUpcoming);
+    }
+  } catch (error) {
+    console.warn('[TournamentService] Liquipedia fetch failed, using curated fallback:', error);
+  }
+
+  // Full fallback to curated data
+  return allCuratedTournaments;
+}
+
+// --- Public API ----------------------------------------------------------
+
+/** Always returns true since we have curated data */
+export function hasStartGGSources(): boolean {
+  return true;
+}
+
+/** Check if start.gg API is configured */
 export function isStartGGConfigured(): boolean {
   return startGGClient.isConfigured();
 }
 
 /**
- * Fetch upcoming tournaments where KOI players participate.
- * Returns [] if no player IDs or slugs are configured (caller falls back to curated data).
+ * Fetch upcoming tournaments.
+ * Primary: Liquipedia + curated upcoming. Supplement: start.gg.
  */
 export async function sggFetchUpcomingTournaments(): Promise<Tournament[]> {
-  if (!hasStartGGSources()) return [];
-
-  const cacheKey = 'sgg-upcoming';
+  const cacheKey = 'tournaments-upcoming';
   const cached = getCached<Tournament[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const all = await fetchKoiTournaments();
-    const result = all
-      .filter((t) => t.state === 1) // Created = upcoming
-      .map(mapTournamentToTournament)
-      .filter((t): t is Tournament => t !== null)
+    const allTournaments = await fetchLiquipediaWithFallback();
+    const upcoming = allTournaments.filter((t) => t.status === 'upcoming');
+
+    const sgg = await fetchTargetedSGGTournaments();
+    const sggUpcoming = sgg.filter((t) => t.status === 'upcoming');
+
+    const result = mergeTournaments(upcoming, sggUpcoming)
       .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
 
-    setCache(cacheKey, result);
+    if (result.length > 0) setCache(cacheKey, result);
     return result;
   } catch (error) {
-    console.warn('Error fetching upcoming tournaments from start.gg:', error);
-    return [];
+    console.warn('Error fetching upcoming tournaments:', error);
+    return getCuratedTournamentsByStatus('upcoming');
   }
 }
 
 /**
- * Fetch past/completed tournaments where KOI players participated.
- * Returns [] if no player IDs or slugs are configured.
+ * Fetch past/completed tournaments.
+ * Primary: Liquipedia (auto-parsed). Fallback: curated data.
  */
 export async function sggFetchPastTournaments(): Promise<Tournament[]> {
-  if (!hasStartGGSources()) return [];
-
-  const cacheKey = 'sgg-past';
+  const cacheKey = 'tournaments-past';
   const cached = getCached<Tournament[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const all = await fetchKoiTournaments();
-    const result = all
-      .filter((t) => t.state === 3) // Completed
-      .map(mapTournamentToTournament)
-      .filter((t): t is Tournament => t !== null)
+    const allTournaments = await fetchLiquipediaWithFallback();
+    const past = allTournaments.filter((t) => t.status === 'finished');
+
+    const sgg = await fetchTargetedSGGTournaments();
+    const sggPast = sgg.filter((t) => t.status === 'finished');
+
+    const result = mergeTournaments(past, sggPast)
       .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
 
-    setCache(cacheKey, result);
+    if (result.length > 0) setCache(cacheKey, result);
     return result;
   } catch (error) {
-    console.warn('Error fetching past tournaments from start.gg:', error);
-    return [];
+    console.warn('Error fetching past tournaments:', error);
+    return getCuratedTournamentsByStatus('finished');
   }
 }
 
 /**
- * Fetch live/active tournaments where KOI players are competing.
- * Returns [] if no player IDs or slugs are configured.
+ * Fetch live/active tournaments.
+ * Primary: Liquipedia + curated. Supplement: start.gg.
  */
 export async function sggFetchLiveTournaments(): Promise<Tournament[]> {
-  if (!hasStartGGSources()) return [];
-
-  const cacheKey = 'sgg-live';
+  const cacheKey = 'tournaments-live';
   const cached = getCached<Tournament[]>(cacheKey, 60 * 1000);
   if (cached) return cached;
 
   try {
-    const all = await fetchKoiTournaments();
-    const result = all
-      .filter((t) => t.state === 2) // Active/live
-      .map(mapTournamentToTournament)
-      .filter((t): t is Tournament => t !== null);
+    const allTournaments = await fetchLiquipediaWithFallback();
+    const live = allTournaments.filter((t) => t.status === 'live');
 
-    setCache(cacheKey, result);
+    const sgg = await fetchTargetedSGGTournaments();
+    const sggLive = sgg.filter((t) => t.status === 'live');
+
+    const result = mergeTournaments(live, sggLive);
+    if (result.length > 0) setCache(cacheKey, result);
     return result;
   } catch (error) {
-    console.warn('Error fetching live tournaments from start.gg:', error);
-    return [];
+    console.warn('Error fetching live tournaments:', error);
+    return getCuratedTournamentsByStatus('live');
   }
 }
 
 /**
  * Fetch tournaments relevant to a specific team.
- * Returns [] if no player IDs or slugs are configured.
+ * Primary: Liquipedia (auto). Fallback: curated data.
  */
 export async function sggFetchTournamentsByTeam(teamId: string): Promise<Tournament[]> {
-  if (!hasStartGGSources()) return [];
+  if (teamId !== 'static-tft' && teamId !== 'static-pokemon') return [];
 
-  // Determine which game this team belongs to
-  let game: Game | null = null;
-  if (teamId === 'static-tft') game = 'tft';
-  else if (teamId === 'static-pokemon') game = 'pokemon_vgc';
-  if (!game) return [];
-
-  const cacheKey = `sgg-team-${teamId}`;
+  const cacheKey = `tournaments-team-${teamId}`;
   const cached = getCached<Tournament[]>(cacheKey);
   if (cached) return cached;
 
   try {
-    const all = await fetchKoiTournaments();
-    const result = all
-      .map(mapTournamentToTournament)
-      .filter((t): t is Tournament => t !== null && t.game === game)
+    const game: Game = teamId === 'static-tft' ? 'tft' : 'pokemon_vgc';
+
+    // Fetch from Liquipedia for this game + curated upcoming
+    let gameTournaments: Tournament[];
+    try {
+      const lpTournaments = await fetchLiquipediaTournamentsByGame(game);
+      if (lpTournaments.length > 0) {
+        const curatedUpcoming = getCuratedTournamentsByTeam(teamId)
+          .filter((t) => t.status === 'upcoming');
+        gameTournaments = mergeTournaments(lpTournaments, curatedUpcoming);
+      } else {
+        gameTournaments = getCuratedTournamentsByTeam(teamId);
+      }
+    } catch {
+      gameTournaments = getCuratedTournamentsByTeam(teamId);
+    }
+
+    const sgg = await fetchTargetedSGGTournaments();
+    const sggForTeam = sgg.filter((t) => t.game === game);
+
+    const result = mergeTournaments(gameTournaments, sggForTeam)
       .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
 
-    setCache(cacheKey, result);
+    if (result.length > 0) setCache(cacheKey, result);
     return result;
   } catch (error) {
     console.warn(`Error fetching tournaments for team ${teamId}:`, error);
-    return [];
+    return getCuratedTournamentsByTeam(teamId);
   }
 }
 
-// ─── Legacy Match API wrappers (kept for backward compat) ──────────
+// --- Legacy Match API wrappers (kept for backward compat) ----------------
 
 /** @deprecated Use sggFetchUpcomingTournaments instead */
 export async function sggFetchUpcomingMatches(): Promise<never[]> { return []; }
