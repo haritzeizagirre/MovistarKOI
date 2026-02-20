@@ -40,7 +40,7 @@ export default function TeamCard({ team, onPress }: TeamCardProps) {
             <Text style={styles.teamName} numberOfLines={1}>
               {team.name}
             </Text>
-            {streak.count >= 5 && streak.type && (
+            {streak.count >= 3 && streak.type && (
               <View style={styles.streakContainer}>
                 <Ionicons
                   name={streak.type === 'fire' ? 'flame' : 'snow'}

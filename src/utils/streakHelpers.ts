@@ -23,8 +23,10 @@ export const calculateCurrentStreak = (matches: Match[], teamId: string): Streak
     // For simplicity we'll check name/tag inclusion if IDs don't match directly,
     // but strictly we should rely on IDs. The app uses 'panda-' prefix often.
 
-    // Filter for finished matches only
-    const finishedMatches = matches.filter(m => m.status === 'finished');
+    // Filter for finished matches only and sort by date descending (newest first)
+    const finishedMatches = matches
+        .filter(m => m.status === 'finished')
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     if (finishedMatches.length === 0) {
         return { count: 0, type: null };
@@ -91,10 +93,15 @@ export const calculateMatchMilestones = (matches: Match[]): Record<string, Match
         .filter(m => m.status === 'finished')
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    let currentWinStreak = 0;
-    let currentLossStreak = 0;
+    // Track streaks per game
+    const streaks: Record<string, { win: number; loss: number }> = {};
 
     for (const match of sortedMatches) {
+        const gameKey = match.game || 'unknown';
+        if (!streaks[gameKey]) {
+            streaks[gameKey] = { win: 0, loss: 0 };
+        }
+
         const isKoiHome = match.homeTeam.tag.toUpperCase().includes('KOI') ||
             match.homeTeam.name.toLowerCase().includes('koi');
         const kScore = isKoiHome ? match.homeTeam.score : match.awayTeam.score;
@@ -112,24 +119,24 @@ export const calculateMatchMilestones = (matches: Match[]): Record<string, Match
         // Check for streaks
         if (kScore !== undefined && oScore !== undefined) {
             if (kScore > oScore) {
-                currentWinStreak++;
-                currentLossStreak = 0;
+                streaks[gameKey].win++;
+                streaks[gameKey].loss = 0;
 
                 // Check if this match reached a multiple of 5
-                if (currentWinStreak >= 5) {
+                if (streaks[gameKey].win >= 5) {
                     badges.push('fire');
                 }
             } else if (kScore < oScore) {
-                currentLossStreak++;
-                currentWinStreak = 0;
+                streaks[gameKey].loss++;
+                streaks[gameKey].win = 0;
 
-                if (currentLossStreak >= 5) {
+                if (streaks[gameKey].loss >= 5) {
                     badges.push('ice');
                 }
             } else {
-                // Draw resets both? or ignores? Usually resets in esports.
-                currentWinStreak = 0;
-                currentLossStreak = 0;
+                // Draw: usually resets in esports, or we can ignore. Let's reset for safety.
+                streaks[gameKey].win = 0;
+                streaks[gameKey].loss = 0;
             }
         }
 

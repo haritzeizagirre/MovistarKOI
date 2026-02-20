@@ -17,6 +17,7 @@ import { TeamsStackParamList } from '../../types';
 import { gameColors } from '../../data/mockData';
 import { useTeam, useTeamMatches } from '../../hooks/usePandaScore';
 import { PlayerCard, MatchCard } from '../../components';
+import { calculateMatchMilestones } from '../../utils/streakHelpers';
 import { LoadingIndicator, ErrorView } from '../../components/StatusViews';
 
 type RouteType = RouteProp<TeamsStackParamList, 'TeamDetail'>;
@@ -30,6 +31,11 @@ export default function TeamDetailScreen() {
 
   const { data: team, loading: teamLoading, error: teamError, refresh } = useTeam(teamId);
   const { upcoming: upcomingMatches, live: liveMatches, past: recentResults } = useTeamMatches(teamId);
+
+  // Calculate milestones for recent results
+  const milestones = React.useMemo(() => {
+    return calculateMatchMilestones(recentResults);
+  }, [recentResults]);
 
   if (teamLoading) {
     return <LoadingIndicator message={t('common.loading')} />;
@@ -169,7 +175,12 @@ export default function TeamDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('teams.recentResults')}</Text>
             {recentResults.map((match) => (
-              <MatchCard key={match.id} match={match} compact />
+              <MatchCard
+                key={match.id}
+                match={match}
+                compact
+                badges={milestones[match.id]}
+              />
             ))}
           </View>
         )}
