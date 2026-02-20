@@ -4,14 +4,14 @@ import pandaScoreAPI, {
   PandaMatch,
   PandaStanding,
 } from './pandascoreApi';
-import { Team, Player, Match, Game, MatchStatus, StaffMember } from '../types';
+import { Team, Player, Match, Game, MatchStatus, StaffMember, Tournament } from '../types';
 import { PANDASCORE_API_KEY } from '../config/pandascore';
 import { staticTeams } from '../data/staticTeams';
 import {
-  sggFetchUpcomingMatches,
-  sggFetchLiveMatches,
-  sggFetchPastMatches,
-  sggFetchMatchesByTeam,
+  sggFetchUpcomingTournaments,
+  sggFetchLiveTournaments,
+  sggFetchPastTournaments,
+  sggFetchTournamentsByTeam,
 } from './startggDataService';
 
 // ─── Mapping helpers ───────────────────────────────────────────────
@@ -337,23 +337,16 @@ export async function fetchTeamById(teamId: string): Promise<Team | undefined> {
 }
 
 /**
- * Get all upcoming matches across all KOI teams
+ * Get all upcoming matches across all KOI teams (PandaScore games only)
  */
 export async function fetchUpcomingMatches(): Promise<Match[]> {
   const cacheKey = 'upcoming-matches';
   const cached = getCached<Match[]>(cacheKey);
   if (cached) return cached;
 
-  // Fetch from both sources in parallel
-  const [pandaMatches, sggMatches] = await Promise.all([
-    fetchPandaUpcoming(),
-    sggFetchUpcomingMatches().catch((err) => {
-      console.warn('start.gg upcoming error:', err);
-      return [] as Match[];
-    }),
-  ]);
+  const pandaMatches = await fetchPandaUpcoming();
 
-  let allMatches = [...pandaMatches, ...sggMatches];
+  let allMatches = [...pandaMatches];
 
   // If rate limit hit, inject mock data
   if (allMatches.length === 0) {
@@ -387,25 +380,16 @@ async function fetchPandaUpcoming(): Promise<Match[]> {
 }
 
 /**
- * Get live matches
+ * Get live matches (PandaScore games only)
  */
 export async function fetchLiveMatches(): Promise<Match[]> {
   const cacheKey = 'live-matches';
   const cached = getCached<Match[]>(cacheKey, CACHE_TTL_LIVE);
   if (cached) return cached;
 
-  // Fetch from both sources in parallel
-  const [pandaMatches, sggMatches] = await Promise.all([
-    fetchPandaLive(),
-    sggFetchLiveMatches().catch((err) => {
-      console.warn('start.gg live error:', err);
-      return [] as Match[];
-    }),
-  ]);
-
-  const allMatches = [...pandaMatches, ...sggMatches];
-  setCache(cacheKey, allMatches);
-  return allMatches;
+  const pandaMatches = await fetchPandaLive();
+  setCache(cacheKey, pandaMatches);
+  return pandaMatches;
 }
 
 /** Internal: fetch live from PandaScore only */
@@ -426,7 +410,7 @@ async function fetchPandaLive(): Promise<Match[]> {
 }
 
 /**
- * Get past (finished) matches
+ * Get past (finished) matches (PandaScore games only)
  */
 export async function fetchPastMatches(): Promise<Match[]> {
   console.log('[fetchPastMatches] called');
@@ -437,18 +421,11 @@ export async function fetchPastMatches(): Promise<Match[]> {
     return cached;
   }
 
-  // Fetch from both sources in parallel
-  const [pandaMatches, sggMatches] = await Promise.all([
-    fetchPandaPast(),
-    sggFetchPastMatches().catch((err) => {
-      console.warn('start.gg past error:', err);
-      return [] as Match[];
-    }),
-  ]);
+  const pandaMatches = await fetchPandaPast();
 
-  console.log('[fetchPastMatches] panda:', pandaMatches.length, 'sgg:', sggMatches.length);
+  console.log('[fetchPastMatches] panda:', pandaMatches.length);
 
-  let allMatches = [...pandaMatches, ...sggMatches];
+  let allMatches = [...pandaMatches];
 
   // If rate limit hit or empty, inject mock data
   if (allMatches.length === 0) {
@@ -582,14 +559,12 @@ function ordinal(n: number): string {
 
 /**
  * Get matches for a specific team
+ * Note: For static teams (TFT, Pokémon VGC), use fetchTournamentsByTeam instead.
  */
 export async function fetchMatchesByTeam(teamId: string): Promise<Match[]> {
-  // For static teams (TFT, Pokémon VGC) → delegate to start.gg
+  // For static teams (TFT, Pokémon VGC) → no matches, only tournaments
   if (teamId.startsWith('static-')) {
-    return sggFetchMatchesByTeam(teamId).catch((err) => {
-      console.warn(`start.gg team matches error for ${teamId}:`, err);
-      return [] as Match[];
-    });
+    return [];
   }
 
   // For PandaScore teams
@@ -618,6 +593,94 @@ export async function fetchMatchesByTeam(teamId: string): Promise<Match[]> {
     console.warn(`Error fetching matches for team ${pandaId}:`, error);
     return [];
   }
+}
+
+// ─── Tournament Data (TFT, Pokémon VGC) ───────────────────────────
+
+/** Race a promise against a timeout. Resolves to null on timeout. */
+function raceTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise<T | null>((resolve) => {
+    const timer = setTimeout(() => {
+      console.warn(`[dataService] tournament fetch timed out after ${ms}ms, using mock data`);
+      resolve(null);
+    }, ms);
+    promise
+      .then((v) => { clearTimeout(timer); resolve(v); })
+      .catch((e) => { clearTimeout(timer); console.warn('[dataService] tournament fetch error:', e); resolve(null); });
+  });
+}
+
+/** Max time to wait for start.gg before falling back to mocks */
+const TOURNAMENT_FETCH_TIMEOUT = 12_000; // 12 seconds
+
+/**
+ * Fetch upcoming tournaments for TFT and Pokémon VGC.
+ * Falls back to mock data when the start.gg API returns nothing or times out.
+ */
+export async function fetchUpcomingTournaments(): Promise<Tournament[]> {
+  console.log('[fetchUpcomingTournaments] called');
+  const result = await raceTimeout(sggFetchUpcomingTournaments(), TOURNAMENT_FETCH_TIMEOUT);
+  if (result && result.length > 0) {
+    console.log('[fetchUpcomingTournaments] got', result.length, 'from start.gg');
+    return result;
+  }
+  console.log('[fetchUpcomingTournaments] falling back to mock data');
+  return getMockTournaments('upcoming');
+}
+
+/**
+ * Fetch live tournaments for TFT and Pokémon VGC.
+ */
+export async function fetchLiveTournaments(): Promise<Tournament[]> {
+  const result = await raceTimeout(sggFetchLiveTournaments(), TOURNAMENT_FETCH_TIMEOUT);
+  return result || [];
+}
+
+/**
+ * Fetch past/completed tournaments for TFT and Pokémon VGC.
+ * Falls back to mock data when the start.gg API returns nothing or times out.
+ */
+export async function fetchPastTournaments(): Promise<Tournament[]> {
+  console.log('[fetchPastTournaments] called');
+  const result = await raceTimeout(sggFetchPastTournaments(), TOURNAMENT_FETCH_TIMEOUT);
+  if (result && result.length > 0) {
+    console.log('[fetchPastTournaments] got', result.length, 'from start.gg');
+    return result;
+  }
+  console.log('[fetchPastTournaments] falling back to mock data');
+  return getMockTournaments('finished');
+}
+
+/**
+ * Fetch tournaments for a specific team (for Teams tab detail).
+ */
+export async function fetchTournamentsByTeam(teamId: string): Promise<Tournament[]> {
+  try {
+    return await sggFetchTournamentsByTeam(teamId);
+  } catch (err) {
+    console.warn(`Error fetching tournaments for team ${teamId}:`, err);
+    return [];
+  }
+}
+
+/**
+ * Fetch a single tournament by ID.
+ * Right now we search across cached results; in the future this
+ * could be a dedicated start.gg query.
+ */
+export async function fetchTournamentById(tournamentId: string): Promise<Tournament | undefined> {
+  // Try to find in any cached tournament list
+  const allSources = await Promise.all([
+    fetchUpcomingTournaments(),
+    fetchLiveTournaments(),
+    fetchPastTournaments(),
+  ]);
+
+  for (const list of allSources) {
+    const found = list.find((t) => t.id === tournamentId);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /**
@@ -801,6 +864,164 @@ function enhanceValorantGame(baseGame: any, valData: any): any {
     }
   };
   return enhanced;
+}
+
+// ─── Mock Tournament Fallbacks ─────────────────────────────────────
+
+function getMockTournaments(status: MatchStatus): Tournament[] {
+  const KOI_LOGO = 'https://liquipedia.net/commons/images/thumb/5/54/KOI_2024_blue_allmode.png/600px-KOI_2024_blue_allmode.png';
+  const now = new Date();
+
+  // TFT players from static data
+  const tftParticipants = staticTeams
+    .find((t) => t.game === 'tft')
+    ?.members.map((p) => ({
+      playerId: p.id,
+      playerName: p.nickname,
+      photoUrl: p.photoUrl,
+    })) || [];
+
+  // Pokémon VGC players from static data
+  const pokemonParticipants = staticTeams
+    .find((t) => t.game === 'pokemon_vgc')
+    ?.members.map((p) => ({
+      playerId: p.id,
+      playerName: p.nickname,
+      photoUrl: p.photoUrl,
+    })) || [];
+
+  if (status === 'upcoming') {
+    // Upcoming tournaments
+    const tftDate = new Date(now);
+    tftDate.setDate(tftDate.getDate() + 12);
+    const tftEndDate = new Date(tftDate);
+    tftEndDate.setDate(tftEndDate.getDate() + 2);
+
+    const pokemonDate = new Date(now);
+    pokemonDate.setDate(pokemonDate.getDate() + 21);
+    const pokemonEndDate = new Date(pokemonDate);
+    pokemonEndDate.setDate(pokemonEndDate.getDate() + 1);
+
+    return [
+      {
+        id: 'mock-tournament-upcoming-tft-1',
+        teamId: 'static-tft',
+        game: 'tft',
+        name: 'TFT EMEA Tactician\'s Crown — Regional Finals',
+        location: 'Berlin, DE',
+        startDate: tftDate.toISOString().split('T')[0],
+        endDate: tftEndDate.toISOString().split('T')[0],
+        time: '14:00',
+        status: 'upcoming',
+        format: 'points_elimination',
+        totalParticipants: 32,
+        phases: [
+          { name: 'Day 1 — Open Lobbies', day: 1, status: 'upcoming', description: '8-player lobbies, points per placement. Bottom players eliminated.', qualifyingCount: 16 },
+          { name: 'Day 2 — Elimination', day: 2, status: 'upcoming', description: 'Remaining players compete. More eliminations.' , qualifyingCount: 8 },
+          { name: 'Day 3 — Grand Finals', day: 3, status: 'upcoming', description: 'Final 8 players. First to checkmate (18-20 pts + Top 1).' },
+        ],
+        koiParticipants: tftParticipants.map((p) => ({
+          ...p,
+          currentPhaseName: 'Pending',
+        })),
+        streamUrl: 'https://twitch.tv/riotgames',
+        imageUrl: 'https://liquipedia.net/commons/images/thumb/4/44/TFT_Tacticians_Crown_allmode.png/600px-TFT_Tacticians_Crown_allmode.png',
+        externalUrl: 'https://teamfighttactics.leagueoflegends.com/es-es/esports/',
+      },
+      {
+        id: 'mock-tournament-upcoming-pokemon-1',
+        teamId: 'static-pokemon',
+        game: 'pokemon_vgc',
+        name: 'Pokémon VGC — Bilbao Special Championship',
+        location: 'Bilbao, ES',
+        startDate: pokemonDate.toISOString().split('T')[0],
+        endDate: pokemonEndDate.toISOString().split('T')[0],
+        time: '09:00',
+        status: 'upcoming',
+        format: 'swiss_to_bracket',
+        totalParticipants: 512,
+        phases: [
+          { name: 'Day 1 — Swiss Rounds', day: 1, status: 'upcoming', description: 'Players matched by W/L record. Top players qualify to Day 2.', qualifyingCount: 32 },
+          { name: 'Day 2 — Top Cut', day: 2, status: 'upcoming', description: 'Single elimination bracket until a champion is crowned.' },
+        ],
+        koiParticipants: pokemonParticipants.map((p) => ({
+          ...p,
+          currentPhaseName: 'Pending',
+        })),
+        streamUrl: 'https://twitch.tv/pokemon',
+        imageUrl: 'https://liquipedia.net/commons/images/thumb/4/46/Pokemon_VGC_logo.png/600px-Pokemon_VGC_logo.png',
+        externalUrl: 'https://www.pokemon.com/es/play-pokemon/',
+      },
+    ];
+  }
+
+  // Finished tournaments
+  const tftPastDate = new Date(now);
+  tftPastDate.setDate(tftPastDate.getDate() - 14);
+  const tftPastEndDate = new Date(tftPastDate);
+  tftPastEndDate.setDate(tftPastEndDate.getDate() + 2);
+
+  const pokemonPastDate = new Date(now);
+  pokemonPastDate.setDate(pokemonPastDate.getDate() - 7);
+  const pokemonPastEndDate = new Date(pokemonPastDate);
+  pokemonPastEndDate.setDate(pokemonPastEndDate.getDate() + 1);
+
+  return [
+    {
+      id: 'mock-tournament-past-tft-1',
+      teamId: 'static-tft',
+      game: 'tft',
+      name: 'TFT Pro Circuit — Lore & Legends Split 1',
+      location: 'Online',
+      startDate: tftPastDate.toISOString().split('T')[0],
+      endDate: tftPastEndDate.toISOString().split('T')[0],
+      time: '16:00',
+      status: 'finished',
+      format: 'points_elimination',
+      totalParticipants: 24,
+      phases: [
+        { name: 'Day 1 — Open Lobbies', day: 1, status: 'finished', description: '8-player lobbies, points per placement. Bottom players eliminated.', qualifyingCount: 16 },
+        { name: 'Day 2 — Elimination', day: 2, status: 'finished', description: 'Remaining players compete. More eliminations.', qualifyingCount: 8 },
+        { name: 'Day 3 — Grand Finals', day: 3, status: 'finished', description: 'Final 8 players. First to checkmate (18-20 pts + Top 1).' },
+      ],
+      koiParticipants: tftParticipants.map((p, i) => ({
+        ...p,
+        placement: i === 0 ? 3 : i === 1 ? 7 : undefined,
+        eliminated: i >= 2,
+        points: i === 0 ? 42 : i === 1 ? 18 : undefined,
+      })),
+      streamUrl: undefined,
+      imageUrl: 'https://liquipedia.net/commons/images/thumb/4/44/TFT_Tacticians_Crown_allmode.png/600px-TFT_Tacticians_Crown_allmode.png',
+      externalUrl: 'https://teamfighttactics.leagueoflegends.com/es-es/esports/',
+    },
+    {
+      id: 'mock-tournament-past-pokemon-1',
+      teamId: 'static-pokemon',
+      game: 'pokemon_vgc',
+      name: 'Pokémon VGC — Madrid Regional Championships',
+      location: 'Madrid, ES',
+      startDate: pokemonPastDate.toISOString().split('T')[0],
+      endDate: pokemonPastEndDate.toISOString().split('T')[0],
+      time: '09:00',
+      status: 'finished',
+      format: 'swiss_to_bracket',
+      totalParticipants: 384,
+      phases: [
+        { name: 'Day 1 — Swiss Rounds', day: 1, status: 'finished', description: 'Players matched by W/L record. Top players qualify to Day 2.', qualifyingCount: 32 },
+        { name: 'Day 2 — Top Cut', day: 2, status: 'finished', description: 'Single elimination bracket until a champion is crowned.' },
+      ],
+      koiParticipants: pokemonParticipants.map((p, i) => ({
+        ...p,
+        placement: i === 0 ? 5 : undefined,
+        eliminated: i > 0,
+        wins: i === 0 ? 9 : 5,
+        losses: i === 0 ? 3 : 4,
+      })),
+      streamUrl: undefined,
+      imageUrl: 'https://liquipedia.net/commons/images/thumb/4/46/Pokemon_VGC_logo.png/600px-Pokemon_VGC_logo.png',
+      externalUrl: 'https://www.pokemon.com/es/play-pokemon/',
+    },
+  ];
 }
 
 // ─── Mock Fallbacks to bypass 508 Rate Limits ──────────────────────

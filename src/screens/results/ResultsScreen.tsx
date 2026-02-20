@@ -11,9 +11,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../theme';
-import { Game, Match } from '../../types';
+import { Game, CalendarItem, isTournament, isMatch } from '../../types';
 import { useResultsData } from '../../hooks/usePandaScore';
-import { MatchCard, GameFilter } from '../../components';
+import { MatchCard, GameFilter, TournamentCard } from '../../components';
 import { calculateMatchMilestones } from '../../utils/streakHelpers';
 import { LoadingIndicator, ErrorView } from '../../components/StatusViews';
 import { useNavigation } from '@react-navigation/native';
@@ -28,17 +28,21 @@ export default function ResultsScreen() {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { liveMatches, pastMatches, loading, error, refresh } = useResultsData(
-    selectedGame || 'all'
-  );
+  const {
+    liveMatches,
+    pastMatches,
+    liveTournaments,
+    pastTournaments,
+    allItems,
+    loading,
+    error,
+    refresh,
+  } = useResultsData(selectedGame || 'all');
 
-  const filteredLive = liveMatches;
-  const filteredFinished = pastMatches;
-
-  // Calculate milestones
+  // Calculate milestones for matches only
   const milestones = React.useMemo(() => {
-    return calculateMatchMilestones(filteredFinished);
-  }, [filteredFinished]);
+    return calculateMatchMilestones(pastMatches);
+  }, [pastMatches]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -46,7 +50,9 @@ export default function ResultsScreen() {
     setRefreshing(false);
   };
 
-  if (loading && liveMatches.length === 0 && pastMatches.length === 0) {
+  const totalItems = allItems.length;
+
+  if (loading && totalItems === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -58,7 +64,7 @@ export default function ResultsScreen() {
     );
   }
 
-  if (error && liveMatches.length === 0 && pastMatches.length === 0) {
+  if (error && totalItems === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -70,12 +76,16 @@ export default function ResultsScreen() {
     );
   }
 
-  const sections: { title: string; data: Match[]; key: string }[] = [];
-  if (filteredLive.length > 0) {
-    sections.push({ title: t('results.liveNow'), data: filteredLive, key: 'live' });
+  // Build sections: live items first, then finished
+  const liveItems: CalendarItem[] = [...liveMatches, ...liveTournaments];
+  const finishedItems: CalendarItem[] = [...pastMatches, ...pastTournaments];
+
+  const sections: { title: string; data: CalendarItem[]; key: string }[] = [];
+  if (liveItems.length > 0) {
+    sections.push({ title: t('results.liveNow'), data: liveItems, key: 'live' });
   }
-  if (filteredFinished.length > 0) {
-    sections.push({ title: t('results.finished'), data: filteredFinished, key: 'finished' });
+  if (finishedItems.length > 0) {
+    sections.push({ title: t('results.finished'), data: finishedItems, key: 'finished' });
   }
 
   return (
@@ -98,13 +108,23 @@ export default function ResultsScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <MatchCard
-              match={item}
-              badges={milestones[item.id]}
-              onPress={() => navigation.navigate('MatchDetail', { matchId: item.id })}
-            />
-          )}
+          renderItem={({ item }) => {
+            if (isTournament(item)) {
+              return (
+                <TournamentCard
+                  tournament={item}
+                  onPress={() => navigation.navigate('TournamentDetail', { tournamentId: item.id })}
+                />
+              );
+            }
+            return (
+              <MatchCard
+                match={item}
+                badges={milestones[item.id]}
+                onPress={() => navigation.navigate('MatchDetail', { matchId: item.id })}
+              />
+            );
+          }}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
               {section.key === 'live' && (

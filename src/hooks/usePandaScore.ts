@@ -6,10 +6,14 @@ import {
   fetchLiveMatches,
   fetchPastMatches,
   fetchMatchesByTeam,
+  fetchUpcomingTournaments,
+  fetchLiveTournaments,
+  fetchPastTournaments,
+  fetchTournamentsByTeam,
   initializeKoiTeams,
 } from '../services/dataService';
 import { scheduleMatchReminders } from '../services/notificationService';
-import { Team, Match, Game } from '../types';
+import { Team, Match, Game, Tournament, CalendarItem, isTournament, getItemDate } from '../types';
 
 // ─── Generic async hook ────────────────────────────────────────────
 
@@ -178,6 +182,16 @@ export function useTeamMatches(teamId: string) {
   return { ...state, upcoming, live, past, allMatches: state.data || [] };
 }
 
+export function useTeamTournaments(teamId: string) {
+  const state = useAsync<Tournament[]>(() => fetchTournamentsByTeam(teamId), [teamId]);
+
+  const upcoming = (state.data || []).filter((t) => t.status === 'upcoming');
+  const live = (state.data || []).filter((t) => t.status === 'live');
+  const past = (state.data || []).filter((t) => t.status === 'finished');
+
+  return { ...state, upcoming, live, past, allTournaments: state.data || [] };
+}
+
 export function useMatchDetails(matchId: string) {
   const { ready } = useInitialize();
   // We use string matchId here, fetchMatchDetails handles the conversion
@@ -192,11 +206,53 @@ export function useMatchDetails(matchId: string) {
   );
 }
 
-// ─── Combined calendar data ────────────────────────────────────────
+// ─── Tournament hooks ──────────────────────────────────────────────
+
+export function useUpcomingTournaments(gameFilter?: Game | 'all') {
+  const { ready } = useInitialize();
+  const state = useAsync<Tournament[]>(() => fetchUpcomingTournaments(), [ready], undefined, ready);
+
+  const filtered =
+    gameFilter && gameFilter !== 'all'
+      ? (state.data || []).filter((t) => t.game === gameFilter)
+      : state.data || [];
+
+  return { ...state, tournaments: filtered };
+}
+
+export function useLiveTournaments(gameFilter?: Game | 'all') {
+  const { ready } = useInitialize();
+  const state = useAsync<Tournament[]>(() => fetchLiveTournaments(), [ready], 60_000, ready);
+
+  const filtered =
+    gameFilter && gameFilter !== 'all'
+      ? (state.data || []).filter((t) => t.game === gameFilter)
+      : state.data || [];
+
+  return { ...state, tournaments: filtered };
+}
+
+export function usePastTournaments(gameFilter?: Game | 'all') {
+  const { ready } = useInitialize();
+  const state = useAsync<Tournament[]>(() => fetchPastTournaments(), [ready], undefined, ready);
+
+  const filtered =
+    gameFilter && gameFilter !== 'all'
+      ? (state.data || []).filter((t) => t.game === gameFilter)
+      : state.data || [];
+
+  return { ...state, tournaments: filtered };
+}
+
+// ─── Combined calendar data (matches + tournaments) ────────────────
 
 interface CalendarData {
   liveMatches: Match[];
   upcomingMatches: Match[];
+  liveTournaments: Tournament[];
+  upcomingTournaments: Tournament[];
+  /** All items (matches + tournaments) merged and sorted by date */
+  allItems: CalendarItem[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -205,15 +261,22 @@ interface CalendarData {
 export function useCalendarData(gameFilter?: Game | 'all'): CalendarData {
   const live = useLiveMatches(gameFilter);
   const upcoming = useUpcomingMatches(gameFilter);
+  const liveTourneys = useLiveTournaments(gameFilter);
+  const upcomingTourneys = useUpcomingTournaments(gameFilter);
 
-  const loading = live.loading || upcoming.loading;
-  const error = live.error || upcoming.error;
+  const loading = live.loading || upcoming.loading || liveTourneys.loading || upcomingTourneys.loading;
+  const error = live.error || upcoming.error || liveTourneys.error || upcomingTourneys.error;
 
   const refresh = useCallback(async () => {
-    await Promise.all([live.refresh(), upcoming.refresh()]);
-  }, [live.refresh, upcoming.refresh]);
+    await Promise.all([
+      live.refresh(),
+      upcoming.refresh(),
+      liveTourneys.refresh(),
+      upcomingTourneys.refresh(),
+    ]);
+  }, [live.refresh, upcoming.refresh, liveTourneys.refresh, upcomingTourneys.refresh]);
 
-  // Schedule / refresh match reminders whenever upcoming data changes
+  // Schedule match reminders
   useEffect(() => {
     if (!loading && upcoming.matches.length > 0) {
       scheduleMatchReminders(upcoming.matches).catch((err) =>
@@ -222,20 +285,42 @@ export function useCalendarData(gameFilter?: Game | 'all'): CalendarData {
     }
   }, [upcoming.matches, loading]);
 
+  // Merge everything into a sorted list
+  const allItems: CalendarItem[] = [
+    ...live.matches,
+    ...upcoming.matches,
+    ...liveTourneys.tournaments,
+    ...upcomingTourneys.tournaments,
+  ].sort((a, b) => {
+    // Live items first
+    const aLive = a.status === 'live' ? 0 : 1;
+    const bLive = b.status === 'live' ? 0 : 1;
+    if (aLive !== bLive) return aLive - bLive;
+    // Then by date
+    return new Date(getItemDate(a)).getTime() - new Date(getItemDate(b)).getTime();
+  });
+
   return {
     liveMatches: live.matches,
     upcomingMatches: upcoming.matches,
+    liveTournaments: liveTourneys.tournaments,
+    upcomingTournaments: upcomingTourneys.tournaments,
+    allItems,
     loading,
     error,
     refresh,
   };
 }
 
-// ─── Combined results data ─────────────────────────────────────────
+// ─── Combined results data (matches + tournaments) ─────────────────
 
 interface ResultsData {
   liveMatches: Match[];
   pastMatches: Match[];
+  liveTournaments: Tournament[];
+  pastTournaments: Tournament[];
+  /** All items (matches + tournaments) merged and sorted */
+  allItems: CalendarItem[];
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -244,17 +329,42 @@ interface ResultsData {
 export function useResultsData(gameFilter?: Game | 'all'): ResultsData {
   const live = useLiveMatches(gameFilter);
   const past = usePastMatches(gameFilter);
+  const liveTourneys = useLiveTournaments(gameFilter);
+  const pastTourneys = usePastTournaments(gameFilter);
 
-  const loading = live.loading || past.loading;
-  const error = live.error || past.error;
+  const loading = live.loading || past.loading || liveTourneys.loading || pastTourneys.loading;
+  const error = live.error || past.error || liveTourneys.error || pastTourneys.error;
 
   const refresh = useCallback(async () => {
-    await Promise.all([live.refresh(), past.refresh()]);
-  }, [live.refresh, past.refresh]);
+    await Promise.all([
+      live.refresh(),
+      past.refresh(),
+      liveTourneys.refresh(),
+      pastTourneys.refresh(),
+    ]);
+  }, [live.refresh, past.refresh, liveTourneys.refresh, pastTourneys.refresh]);
+
+  // Merge everything
+  const allItems: CalendarItem[] = [
+    ...live.matches,
+    ...liveTourneys.tournaments,
+    ...past.matches,
+    ...pastTourneys.tournaments,
+  ].sort((a, b) => {
+    // Live items first
+    const aLive = a.status === 'live' ? 0 : 1;
+    const bLive = b.status === 'live' ? 0 : 1;
+    if (aLive !== bLive) return aLive - bLive;
+    // Then by date (newest first for results)
+    return new Date(getItemDate(b)).getTime() - new Date(getItemDate(a)).getTime();
+  });
 
   return {
     liveMatches: live.matches,
     pastMatches: past.matches,
+    liveTournaments: liveTourneys.tournaments,
+    pastTournaments: pastTourneys.tournaments,
+    allItems,
     loading,
     error,
     refresh,

@@ -12,44 +12,47 @@ export const STARTGG_API_TOKEN = '74e65196eb276e71444c994071bc4693';
 export const STARTGG_API_URL = 'https://api.start.gg/gql/alpha';
 
 /**
- * start.gg videogame IDs — discover via the `videogames` query.
- * These need to be confirmed once you have an API token; use the
- * `discoverVideogameId()` helper in startggApi.ts to look them up.
+ * start.gg videogame IDs — discovered via the `videogames` GraphQL query
+ * on 2026-02-20.
  *
- * Known IDs from community:
- *  - Teamfight Tactics: 33795
- *  - Pokémon VGC (Scarlet & Violet): 48548
+ *  - Teamfight Tactics: 33594
+ *  - Pokémon Scarlet/Violet (VGC): 45331
  */
 export const STARTGG_VIDEOGAME_IDS: Record<string, number> = {
-  tft: 33795,
-  pokemon_vgc: 48548,
+  tft: 33594,
+  pokemon_vgc: 45331,
 };
 
 /** Games handled by start.gg in this app */
 export const STARTGG_SUPPORTED_GAMES = ['tft', 'pokemon_vgc'] as const;
 
 /**
- * Keywords that identify top-tier (regional / international) tournaments.
- * Tournaments whose name does NOT contain any of these keywords will be
- * filtered out so only official competitive events appear in the calendar.
+ * start.gg user IDs for KOI players.
+ *
+ * When populated, the service will query tournaments these specific players
+ * have entered, instead of fetching all tournaments for the videogame.
+ *
+ * To find a player's user ID:
+ *   1. Open their start.gg profile (e.g. https://start.gg/user/abc123)
+ *   2. Use the API: query { user(slug: "user/abc123") { id } }
+ *
+ * Leave empty arrays to fall back to curated tournament data.
  */
-export const STARTGG_TOP_TOURNAMENT_KEYWORDS: Record<string, string[]> = {
-  pokemon_vgc: [
-    'regional',
-    'international',
-    'world championship',
-    'special championship',
-    'worlds',
-  ],
-  tft: [
-    'pro circuit',
-    'tpc',
-    "tactician's crown",
-    'tacticians crown',
-    'regional final',
-    'golden spatula',
-    'tactician trial',
-    'lore & legends',
-    'ko coliseum',
-  ],
+export const STARTGG_PLAYER_USER_IDS: Record<string, number[]> = {
+  tft: [],           // e.g. [12345, 67890]  ← add Reven, Dalesom, etc.
+  pokemon_vgc: [],   // e.g. [11111, 22222]  ← add Alex Gómez, Eric Rios, etc.
+};
+
+/**
+ * Specific start.gg tournament slugs to track.
+ *
+ * When populated, the service will fetch these exact tournaments from start.gg.
+ * This is useful for tracking specific KOI events without knowing player IDs.
+ *
+ * To find a slug: visit the tournament page on start.gg and copy the URL path
+ * e.g. "tournament/tft-emea-pro-circuit-2026" from https://start.gg/tournament/tft-emea-pro-circuit-2026
+ */
+export const STARTGG_TRACKED_TOURNAMENT_SLUGS: Record<string, string[]> = {
+  tft: [],           // e.g. ['tournament/tft-emea-pro-circuit-2026']
+  pokemon_vgc: [],   // e.g. ['tournament/2026-pokemon-madrid-regional']
 };

@@ -135,6 +135,97 @@ export interface DraftBan {
   championImageUrl?: string;
 }
 
+// ─── Tournament (TFT / Pokémon VGC) ─────────────────────
+
+/** Games that use tournament format instead of team-vs-team matches */
+export const TOURNAMENT_GAMES: Game[] = ['tft', 'pokemon_vgc'];
+
+/** Check if a game uses tournament format */
+export function isTournamentGame(game: Game): boolean {
+  return TOURNAMENT_GAMES.includes(game);
+}
+
+/**
+ * Tournament format descriptor.
+ * - points_elimination: TFT style – 8 players per lobby, points per placement, bottom eliminated each round
+ * - swiss_to_bracket:   Pokémon VGC style – Swiss Day 1, top-cut single elimination Day 2
+ * - bracket:            Pure single/double elimination bracket
+ * - other:              Catch-all
+ */
+export type TournamentFormat = 'points_elimination' | 'swiss_to_bracket' | 'bracket' | 'other';
+
+/** A phase/day within a tournament */
+export interface TournamentPhase {
+  name: string;               // "Day 1", "Swiss Rounds", "Top Cut", "Grand Finals"
+  day: number;                // 1-indexed day number
+  status: MatchStatus;        // upcoming / live / finished
+  description?: string;       // Optional human-readable description
+  qualifyingCount?: number;   // How many players qualify from this phase
+}
+
+/** A KOI player's status in a tournament */
+export interface TournamentParticipant {
+  playerId: string;            // Links to Player.id
+  playerName: string;          // Display name / gamerTag
+  photoUrl?: string;
+  placement?: number;          // Final placement (1st, 2nd, 3rd…)
+  wins?: number;               // For swiss/bracket formats
+  losses?: number;
+  points?: number;             // For points-based formats (TFT)
+  eliminated?: boolean;        // Whether the player has been knocked out
+  currentPhaseName?: string;   // Which phase they're currently in
+}
+
+export interface Tournament {
+  id: string;
+  teamId: string;              // Links to the static team (e.g. 'static-tft')
+  game: Game;
+  name: string;                // Tournament name
+  location?: string;           // City, Country or "Online"
+  startDate: string;           // ISO date (first day)
+  endDate?: string;            // ISO date (last day) — multi-day events
+  time: string;                // Start time
+  status: MatchStatus;
+  format: TournamentFormat;
+  totalParticipants?: number;
+  phases?: TournamentPhase[];
+  koiParticipants: TournamentParticipant[];
+  streamUrl?: string;
+  imageUrl?: string;
+  externalUrl?: string;        // Link to start.gg page
+}
+
+/**
+ * Union type for items displayed in Calendar / Results lists.
+ * Use isTournament() type guard to discriminate.
+ */
+export type CalendarItem = Match | Tournament;
+
+/** Type guard: is this calendar item a Tournament? */
+export function isTournament(item: CalendarItem): item is Tournament {
+  return 'format' in item && 'koiParticipants' in item;
+}
+
+/** Type guard: is this calendar item a Match? */
+export function isMatch(item: CalendarItem): item is Match {
+  return 'homeTeam' in item && 'awayTeam' in item;
+}
+
+/** Get the sort date from either a Match or Tournament */
+export function getItemDate(item: CalendarItem): string {
+  return isTournament(item) ? item.startDate : item.date;
+}
+
+/** Get the status from either a Match or Tournament */
+export function getItemStatus(item: CalendarItem): MatchStatus {
+  return item.status;
+}
+
+/** Get the game from either a Match or Tournament */
+export function getItemGame(item: CalendarItem): Game {
+  return item.game;
+}
+
 // ─── Notification Preference ─────────────────────────────
 export interface NotificationPreference {
   teamId: string;
@@ -168,11 +259,13 @@ export type TeamsStackParamList = {
 export type CalendarStackParamList = {
   CalendarMain: undefined;
   MatchDetail: { matchId: string };
+  TournamentDetail: { tournamentId: string };
 };
 
 export type ResultsStackParamList = {
   ResultsMain: undefined;
   MatchDetail: { matchId: string };
+  TournamentDetail: { tournamentId: string };
 };
 
 export type SettingsStackParamList = {

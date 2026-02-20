@@ -20,6 +20,7 @@ import PlayerDetailScreen from '../screens/teams/PlayerDetailScreen';
 import CalendarScreen from '../screens/calendar/CalendarScreen';
 import ResultsScreen from '../screens/results/ResultsScreen';
 import MatchDetailScreen from '../screens/shared/MatchDetailScreen';
+import TournamentDetailScreen from '../screens/shared/TournamentDetailScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import NotificationSettingsScreen from '../screens/settings/NotificationSettingsScreen';
 import LoginScreen from '../screens/settings/LoginScreen';
@@ -81,6 +82,11 @@ function CalendarStackNavigator() {
         component={MatchDetailScreen}
         options={{ headerShown: false }}
       />
+      <CalendarStack.Screen
+        name="TournamentDetail"
+        component={TournamentDetailScreen}
+        options={{ headerShown: false }}
+      />
     </CalendarStack.Navigator>
   );
 }
@@ -102,6 +108,11 @@ function ResultsStackNavigator() {
       <ResultsStack.Screen
         name="MatchDetail"
         component={MatchDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <ResultsStack.Screen
+        name="TournamentDetail"
+        component={TournamentDetailScreen}
         options={{ headerShown: false }}
       />
     </ResultsStack.Navigator>

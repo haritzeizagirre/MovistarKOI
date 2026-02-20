@@ -268,7 +268,97 @@ const VIDEOGAME_SEARCH_QUERY = `
   }
 `;
 
+const USER_TOURNAMENTS_QUERY = `
+  query UserTournaments($userId: ID!, $perPage: Int!, $page: Int!) {
+    user(id: $userId) {
+      id
+      tournaments(query: {
+        perPage: $perPage
+        page: $page
+        sortBy: "startAt desc"
+      }) {
+        nodes {
+          id
+          name
+          slug
+          startAt
+          endAt
+          state
+          numAttendees
+          isOnline
+          city
+          countryCode
+          images {
+            url
+            type
+          }
+          events {
+            id
+            name
+            slug
+            state
+            startAt
+            numEntrants
+            videogame {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
+const TOURNAMENT_BY_SLUG_QUERY = `
+  query TournamentBySlug($slug: String!) {
+    tournament(slug: $slug) {
+      id
+      name
+      slug
+      startAt
+      endAt
+      state
+      numAttendees
+      isOnline
+      city
+      countryCode
+      images {
+        url
+        type
+      }
+      events {
+        id
+        name
+        slug
+        state
+        startAt
+        numEntrants
+        videogame {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
+// ─── Helpers ───────────────────────────────────────────────────────
+
+/** Race a promise against a timeout. Rejects if the timeout fires first. */
+function withTimeout<T>(promise: Promise<T>, ms: number, label = 'request'): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`start.gg ${label} timed out after ${ms}ms`)), ms);
+    promise
+      .then((v) => { clearTimeout(timer); resolve(v); })
+      .catch((e) => { clearTimeout(timer); reject(e); });
+  });
+}
+
 // ─── API Client ────────────────────────────────────────────────────
+
+/** Max time (ms) to wait for a single start.gg API request */
+const STARTGG_REQUEST_TIMEOUT = 10_000; // 10 seconds
 
 class StartGGClient {
   private token: string;
@@ -286,7 +376,9 @@ class StartGGClient {
       throw new Error('start.gg API token not configured');
     }
 
-    const response = await fetch(STARTGG_API_URL, {
+    console.log('[start.gg] sending query…', Object.keys(variables));
+
+    const fetchPromise = fetch(STARTGG_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -295,11 +387,14 @@ class StartGGClient {
       body: JSON.stringify({ query: gql, variables }),
     });
 
+    const response = await withTimeout(fetchPromise, STARTGG_REQUEST_TIMEOUT, 'query');
+
     if (!response.ok) {
       throw new Error(`start.gg API error: ${response.status} ${response.statusText}`);
     }
 
     const json = await response.json();
+    console.log('[start.gg] response received, errors:', json.errors?.length ?? 0);
     if (json.errors) {
       throw new Error(`start.gg GraphQL error: ${json.errors[0]?.message || 'Unknown error'}`);
     }
@@ -388,6 +483,30 @@ class StartGGClient {
       sets: data.event?.sets?.nodes || [],
       total: data.event?.sets?.pageInfo?.total || 0,
     };
+  }
+
+  /**
+   * Get all tournaments a specific user has entered.
+   */
+  async getUserTournaments(
+    userId: number,
+    page = 1,
+    perPage = 15
+  ): Promise<StartGGTournament[]> {
+    const data = await this.query<{
+      user: { tournaments: { nodes: StartGGTournament[] } };
+    }>(USER_TOURNAMENTS_QUERY, { userId: String(userId), page, perPage });
+    return data.user?.tournaments?.nodes || [];
+  }
+
+  /**
+   * Get a single tournament by slug.
+   */
+  async getTournamentBySlug(slug: string): Promise<StartGGTournament | null> {
+    const data = await this.query<{
+      tournament: StartGGTournament | null;
+    }>(TOURNAMENT_BY_SLUG_QUERY, { slug });
+    return data.tournament || null;
   }
 }
 

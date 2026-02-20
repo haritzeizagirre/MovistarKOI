@@ -11,9 +11,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Colors, Spacing, FontSize, BorderRadius } from '../../theme';
-import { Game, Match } from '../../types';
+import { Game, CalendarItem, isTournament, getItemDate } from '../../types';
 import { useCalendarData } from '../../hooks/usePandaScore';
-import { MatchCard, GameFilter } from '../../components';
+import { MatchCard, GameFilter, TournamentCard } from '../../components';
 import { LoadingIndicator, ErrorView } from '../../components/StatusViews';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -27,11 +27,16 @@ export default function CalendarScreen() {
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  const { liveMatches, upcomingMatches, loading, error, refresh } = useCalendarData(
-    selectedGame || 'all'
-  );
-
-  const filteredMatches = [...liveMatches, ...upcomingMatches];
+  const {
+    liveMatches,
+    upcomingMatches,
+    liveTournaments,
+    upcomingTournaments,
+    allItems,
+    loading,
+    error,
+    refresh,
+  } = useCalendarData(selectedGame || 'all');
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -39,7 +44,9 @@ export default function CalendarScreen() {
     setRefreshing(false);
   };
 
-  if (loading && filteredMatches.length === 0) {
+  const liveCount = liveMatches.length + liveTournaments.length;
+
+  if (loading && allItems.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -51,7 +58,7 @@ export default function CalendarScreen() {
     );
   }
 
-  if (error && filteredMatches.length === 0) {
+  if (error && allItems.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -63,11 +70,11 @@ export default function CalendarScreen() {
     );
   }
 
-  // Group by date
-  const grouped = filteredMatches.reduce<Record<string, Match[]>>((acc, match) => {
-    const dateKey = match.date;
+  // Group all items by date
+  const grouped = allItems.reduce<Record<string, CalendarItem[]>>((acc, item) => {
+    const dateKey = getItemDate(item);
     if (!acc[dateKey]) acc[dateKey] = [];
-    acc[dateKey].push(match);
+    acc[dateKey].push(item);
     return acc;
   }, {});
 
@@ -90,16 +97,18 @@ export default function CalendarScreen() {
       <GameFilter selectedGame={selectedGame} onSelect={setSelectedGame} />
 
       {/* Live count banner */}
-      {liveMatches.length > 0 && (
+      {liveCount > 0 && (
         <View style={styles.liveBanner}>
           <View style={styles.livePulse} />
           <Text style={styles.liveBannerText}>
-            {liveMatches.length} {liveMatches.length === 1 ? 'partido en directo' : 'partidos en directo'}
+            {liveCount} {liveCount === 1
+              ? t('calendar.liveEventSingular', { defaultValue: 'evento en directo' })
+              : t('calendar.liveEventPlural', { defaultValue: 'eventos en directo' })}
           </Text>
         </View>
       )}
 
-      {filteredMatches.length === 0 ? (
+      {allItems.length === 0 ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="calendar-outline" size={48} color={Colors.textMuted} />
           <Text style={styles.emptyTitle}>{t('calendar.noMatches')}</Text>
@@ -109,12 +118,22 @@ export default function CalendarScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <MatchCard
-              match={item}
-              onPress={() => navigation.navigate('MatchDetail', { matchId: item.id })}
-            />
-          )}
+          renderItem={({ item }) => {
+            if (isTournament(item)) {
+              return (
+                <TournamentCard
+                  tournament={item}
+                  onPress={() => navigation.navigate('TournamentDetail', { tournamentId: item.id })}
+                />
+              );
+            }
+            return (
+              <MatchCard
+                match={item}
+                onPress={() => navigation.navigate('MatchDetail', { matchId: item.id })}
+              />
+            );
+          }}
           renderSectionHeader={({ section }) => {
             const isToday = new Date(section.raw).toDateString() === new Date().toDateString();
             return (

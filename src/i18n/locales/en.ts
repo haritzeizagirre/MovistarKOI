@@ -95,6 +95,28 @@ export default {
     pokemon_vgc: 'Pokémon VGC',
   },
 
+  // Tournament
+  tournament: {
+    detail: 'Tournament',
+    participants: 'participants',
+    eliminated: 'Eliminated',
+    watchLive: 'Watch live',
+    formatLabel: 'Format',
+    format_points_elimination: 'Points elimination',
+    format_swiss_to_bracket: 'Swiss + Single elimination',
+    format_bracket: 'Single elimination',
+    format_other: 'Other',
+    tftFormatDesc: 'Players compete in 8-player lobbies. Each game awards points based on final placement (1-8 pts). Players with the fewest points are progressively eliminated until the final.',
+    pokemonFormatDesc: 'Day 1 uses a Swiss format: players are paired based on their win/loss record. Top finishers (Top 16/32) advance to Day 2, where single elimination determines the champion.',
+    schedule: 'Schedule',
+    qualifyCount: '{{count}} players qualify',
+    koiPlayers: 'KOI Players',
+    viewOnStartGG: 'View on start.gg',
+    phases: 'Phases',
+    placement: 'Placement',
+    label: 'Tournament',
+  },
+
   // Common
   common: {
     loading: 'Loading...',
