@@ -171,6 +171,23 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                 {/* Active Game Details */}
                 {activeGame ? (
                     <View style={styles.gameDetailsCard}>
+                        {/* Game Meta Content */}
+                        <View style={styles.gameMetaContainer}>
+                            {activeGame.beginAt && (
+                                <Text style={styles.gameMetaText}>
+                                    {new Date(activeGame.beginAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+                                </Text>
+                            )}
+                            {activeGame.length && (
+                                <View style={styles.gameDurationBadge}>
+                                    <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
+                                    <Text style={styles.gameDurationText}>
+                                        {Math.floor(activeGame.length / 60)}:{(activeGame.length % 60).toString().padStart(2, '0')}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
                         {/* Map info for Valorant/CoD */}
                         {activeGame.map && (
                             <View style={styles.mapContainer}>
@@ -222,7 +239,14 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                                                     ) : (
                                                         <View style={styles.pickPlaceholder} />
                                                     )}
-                                                    <Text style={styles.pickName} numberOfLines={1}>{p.championName}</Text>
+                                                    <View style={styles.pickInfo}>
+                                                        <Text style={styles.pickName} numberOfLines={1}>{p.championName}</Text>
+                                                        {p.stats && (
+                                                            <Text style={styles.pickStats}>
+                                                                {p.stats.kills}/{p.stats.deaths}/{p.stats.assists} • {p.stats.cs} CS
+                                                            </Text>
+                                                        )}
+                                                    </View>
                                                 </View>
                                             ))}
                                         </View>
@@ -259,7 +283,14 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                                                     ) : (
                                                         <View style={styles.pickPlaceholder} />
                                                     )}
-                                                    <Text style={[styles.pickName, { textAlign: 'right', marginRight: Spacing.sm, marginLeft: 0 }]} numberOfLines={1}>{p.championName}</Text>
+                                                    <View style={[styles.pickInfo, { alignItems: 'flex-end', marginRight: Spacing.sm, marginLeft: 0 }]}>
+                                                        <Text style={[styles.pickName, { textAlign: 'right' }]} numberOfLines={1}>{p.championName}</Text>
+                                                        {p.stats && (
+                                                            <Text style={styles.pickStats}>
+                                                                {p.stats.kills}/{p.stats.deaths}/{p.stats.assists} • {p.stats.cs} CS
+                                                            </Text>
+                                                        )}
+                                                    </View>
                                                 </View>
                                             ))}
                                         </View>
@@ -461,6 +492,35 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: Colors.border,
     },
+    gameMetaContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: Spacing.sm,
+        backgroundColor: Colors.surfaceLight,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+        gap: Spacing.md,
+    },
+    gameMetaText: {
+        color: Colors.textMuted,
+        fontSize: FontSize.sm,
+        fontWeight: '600',
+    },
+    gameDurationBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.surfaceHover,
+        paddingHorizontal: Spacing.sm,
+        paddingVertical: 4,
+        borderRadius: BorderRadius.round,
+        gap: 4,
+    },
+    gameDurationText: {
+        color: Colors.textSecondary,
+        fontSize: FontSize.xs,
+        fontWeight: '700',
+    },
     mapContainer: {
         height: 120,
         width: '100%',
@@ -566,12 +626,21 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         backgroundColor: Colors.surfaceHover,
     },
+    pickInfo: {
+        flex: 1,
+        justifyContent: 'center',
+        marginLeft: Spacing.sm,
+    },
     pickName: {
         color: Colors.textSecondary,
         fontSize: FontSize.sm,
         fontWeight: '600',
-        flex: 1,
-        marginLeft: Spacing.sm,
+    },
+    pickStats: {
+        color: Colors.textMuted,
+        fontSize: FontSize.xs - 2,
+        fontWeight: '500',
+        marginTop: 2,
     },
     draftVS: {
         width: 30,

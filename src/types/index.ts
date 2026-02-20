@@ -90,6 +90,7 @@ export interface MatchGame {
   map?: MatchMap;
   winnerId?: string;
   length?: number; // duration in seconds
+  beginAt?: string; // game start time
   homeTeamScore?: number; // e.g., round wins in Valorant
   awayTeamScore?: number;
   draft?: MatchDraft; // for LoL / Valorant
@@ -117,6 +118,15 @@ export interface DraftPick {
   championName: string;
   championImageUrl?: string;
   playerId?: string;
+  stats?: DraftPlayerStats;
+}
+
+export interface DraftPlayerStats {
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs?: number; // Creep score
+  gold?: number; // Total gold
 }
 
 export interface DraftBan {

@@ -161,6 +161,7 @@ const mapPandaMatchToMatch = (m: PandaMatch, koiTeamIds: number[]): Match | null
       status: mapPandaMatchStatus(g.status),
       winnerId: g.winner?.id ? String(g.winner.id) : undefined,
       length: g.length,
+      beginAt: g.begin_at,
     })),
     _tournamentId: m.tournament?.id, // internal: used for standings lookup
     _serieId: m.serie?.id,           // internal: identifying the series
@@ -878,15 +879,16 @@ function getMockMatchDetail(id: string): Match | undefined {
         status: 'finished',
         winnerId: baseMatch.homeTeam?.id,
         length: 1845,
+        beginAt: new Date(new Date().getTime() - 1845000).toISOString(),
         draft: {
           homeTeamDetails: {
             side: 'blue',
             picks: [
-              { championId: '266', championName: 'Aatrox', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Aatrox.png' },
-              { championId: '113', championName: 'Sejuani', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Sejuani.png' },
-              { championId: '103', championName: 'Ahri', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Ahri.png' },
-              { championId: '236', championName: 'Lucian', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Lucian.png' },
-              { championId: '267', championName: 'Nami', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Nami.png' },
+              { championId: '266', championName: 'Aatrox', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Aatrox.png', stats: { kills: 3, deaths: 1, assists: 5, cs: 260, gold: 12500 } },
+              { championId: '113', championName: 'Sejuani', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Sejuani.png', stats: { kills: 1, deaths: 2, assists: 12, cs: 160, gold: 9800 } },
+              { championId: '103', championName: 'Ahri', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Ahri.png', stats: { kills: 6, deaths: 1, assists: 4, cs: 285, gold: 13800 } },
+              { championId: '236', championName: 'Lucian', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Lucian.png', stats: { kills: 7, deaths: 2, assists: 3, cs: 305, gold: 15200 } },
+              { championId: '267', championName: 'Nami', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Nami.png', stats: { kills: 0, deaths: 1, assists: 14, cs: 20, gold: 8100 } },
             ],
             bans: [
               { championId: '57', championName: 'Maokai', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Maokai.png' },
@@ -896,11 +898,11 @@ function getMockMatchDetail(id: string): Match | undefined {
           awayTeamDetails: {
             side: 'red',
             picks: [
-              { championId: '897', championName: 'K\'Sante', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/KSante.png' },
-              { championId: '254', championName: 'Vi', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Vi.png' },
-              { championId: '268', championName: 'Azir', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Azir.png' },
-              { championId: '110', championName: 'Varus', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Varus.png' },
-              { championId: '526', championName: 'Rell', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Rell.png' },
+              { championId: '897', championName: 'K\'Sante', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/KSante.png', stats: { kills: 1, deaths: 3, assists: 4, cs: 240, gold: 11000 } },
+              { championId: '254', championName: 'Vi', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Vi.png', stats: { kills: 4, deaths: 4, assists: 6, cs: 180, gold: 10500 } },
+              { championId: '268', championName: 'Azir', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Azir.png', stats: { kills: 2, deaths: 2, assists: 3, cs: 310, gold: 14000 } },
+              { championId: '110', championName: 'Varus', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Varus.png', stats: { kills: 5, deaths: 2, assists: 2, cs: 290, gold: 13500 } },
+              { championId: '526', championName: 'Rell', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Rell.png', stats: { kills: 0, deaths: 5, assists: 11, cs: 30, gold: 7500 } },
             ],
             bans: [
               { championId: '22', championName: 'Ashe', championImageUrl: 'https://ddragon.leagueoflegends.com/cdn/14.5.1/img/champion/Ashe.png' },
