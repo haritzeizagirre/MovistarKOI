@@ -78,7 +78,7 @@ export default function TeamDetailScreen() {
         {/* Social Links */}
         {team.socialLinks && (
           <View style={styles.socialRow}>
-            {team.socialLinks.twitter && (
+            {!!team.socialLinks.twitter && (
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => Linking.openURL(team.socialLinks!.twitter!)}
@@ -86,7 +86,7 @@ export default function TeamDetailScreen() {
                 <Ionicons name="logo-twitter" size={20} color={Colors.primary} />
               </TouchableOpacity>
             )}
-            {team.socialLinks.instagram && (
+            {!!team.socialLinks.instagram && (
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => Linking.openURL(team.socialLinks!.instagram!)}
@@ -94,7 +94,7 @@ export default function TeamDetailScreen() {
                 <Ionicons name="logo-instagram" size={20} color={Colors.accent} />
               </TouchableOpacity>
             )}
-            {team.socialLinks.youtube && (
+            {!!team.socialLinks.youtube && (
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => Linking.openURL(team.socialLinks!.youtube!)}
@@ -102,7 +102,7 @@ export default function TeamDetailScreen() {
                 <Ionicons name="logo-youtube" size={20} color="#FF0000" />
               </TouchableOpacity>
             )}
-            {team.socialLinks.twitch && (
+            {!!team.socialLinks.twitch && (
               <TouchableOpacity
                 style={styles.socialButton}
                 onPress={() => Linking.openURL(team.socialLinks!.twitch!)}

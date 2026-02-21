@@ -144,7 +144,7 @@ export default function MatchCard({ match, onPress, compact = false, badges = []
 
         {/* Match type & standing */}
         {/* Match type */}
-        {match.matchType && (
+        {!!match.matchType && (
           <View style={styles.subtitleRow}>
             <View style={styles.matchTypeBadge}>
               <Ionicons name="flag-outline" size={10} color={Colors.textMuted} style={{ marginRight: 3 }} />
@@ -167,7 +167,7 @@ export default function MatchCard({ match, onPress, compact = false, badges = []
             <Text style={[styles.teamName, koiIsHome && styles.koiTeamName]} numberOfLines={1}>
               {compact ? match.homeTeam.tag : match.homeTeam.name}
             </Text>
-            {match.standing && (
+            {!!match.standing && (
               <Text style={styles.teamStandingText}>{match.standing}</Text>
             )}
           </View>
@@ -214,14 +214,14 @@ export default function MatchCard({ match, onPress, compact = false, badges = []
             <Text style={styles.teamName} numberOfLines={1}>
               {compact ? match.awayTeam.tag : match.awayTeam.name}
             </Text>
-            {match.opponentStanding && (
+            {!!match.opponentStanding && (
               <Text style={styles.teamStandingText}>{match.opponentStanding}</Text>
             )}
           </View>
         </View>
 
         {/* Stream link for live */}
-        {isLive && match.streamUrl && (
+        {isLive && !!match.streamUrl && (
           <View style={styles.streamRow}>
             <Ionicons name="play-circle" size={14} color={Colors.live} />
             <Text style={styles.streamText}>Ver en directo</Text>

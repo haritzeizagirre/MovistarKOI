@@ -785,17 +785,26 @@ export async function fetchMatchDetails(matchId: string): Promise<Match | undefi
       mappedMatch.games = detailedGames;
     }
 
-    // Enrich CoD matches with map/mode data from Liquipedia
+    // Enrich CoD matches with map/mode data from Liquipedia (best-effort, with timeout)
     if (mappedMatch.game === 'call_of_duty' && mappedMatch.games && mappedMatch.status === 'finished') {
       try {
-        mappedMatch.games = await enrichCodMatchGames(
-          mappedMatch.games,
-          mappedMatch.homeTeam.name,
-          mappedMatch.awayTeam.name,
-          mappedMatch.date,
-        );
+        const enriched = await Promise.race([
+          enrichCodMatchGames(
+            mappedMatch.games,
+            mappedMatch.homeTeam.name,
+            mappedMatch.awayTeam.name,
+            mappedMatch.date,
+          ),
+          new Promise<typeof mappedMatch.games>((resolve) =>
+            setTimeout(() => {
+              console.warn('[CoD Enrichment] Timed out after 10s, using base data');
+              resolve(mappedMatch.games!);
+            }, 10_000)
+          ),
+        ]);
+        mappedMatch.games = enriched;
       } catch (e) {
-        console.warn('[CoD Enrichment] Failed to enrich CoD match with map/mode data:', e);
+        console.warn('[CoD Enrichment] Failed:', e);
       }
     }
 

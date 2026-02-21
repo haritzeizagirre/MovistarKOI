@@ -49,9 +49,10 @@ const USER_AGENT = 'MovistarKOI-App/1.0 (esports fan app; contact@movistar-koi-a
 const FETCH_TIMEOUT = 15_000;
 
 // Cache TTLs
-const TEAM_PAGE_CACHE_TTL = 4 * 60 * 60 * 1000;    // 4 hours
-const MATCH_DETAIL_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
-const TOURNAMENT_CACHE_TTL = 6 * 60 * 60 * 1000;    // 6 hours
+const TEAM_PAGE_CACHE_TTL = 4 * 60 * 60 * 1000;      // 4 hours
+const MATCH_DETAIL_CACHE_TTL = 24 * 60 * 60 * 1000;   // 24 hours
+const TOURNAMENT_CACHE_TTL = 6 * 60 * 60 * 1000;      // 6 hours
+const NEGATIVE_CACHE_TTL = 30 * 60 * 1000;             // 30 min — cache "no data" to avoid re-fetching
 
 // ─── Types ──────────────────────────────────────────────────────────
 
@@ -133,7 +134,17 @@ function stripHtml(html: string): string {
 
 // ─── API Fetch ──────────────────────────────────────────────────────
 
+// Track if we've been rate-limited recently to avoid hammering the API
+let codRateLimited = false;
+let codRateLimitedUntil = 0;
+
 async function fetchPageHtml(page: string): Promise<string | null> {
+  // If we were recently rate-limited, skip immediately
+  if (codRateLimited && Date.now() < codRateLimitedUntil) {
+    console.log('[Liquipedia CoD] Skipping fetch (rate-limited cooldown)');
+    return null;
+  }
+
   const url = `${COD_API_URL}?action=parse&page=${encodeURIComponent(page)}&prop=text&format=json`;
 
   await rateLimitDelay();
@@ -148,27 +159,20 @@ async function fetchPageHtml(page: string): Promise<string | null> {
     });
 
     if (response.status === 429) {
-      console.warn('[Liquipedia CoD] Rate limited (429), retrying in 10s...');
-      await new Promise((resolve) => setTimeout(resolve, 10_000));
-
-      // One retry
-      const retryResponse = await fetch(url, {
-        headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT),
-      });
-
-      if (!retryResponse.ok) {
-        console.warn(`[Liquipedia CoD] Retry failed: ${retryResponse.status}`);
-        return null;
-      }
-      const retryData = await retryResponse.json();
-      return retryData?.parse?.text?.['*'] || null;
+      // Mark rate-limited: stop ALL further requests for 5 minutes
+      codRateLimited = true;
+      codRateLimitedUntil = Date.now() + 30 * 60 * 1000;
+      console.warn('[Liquipedia CoD] Rate limited (429). Pausing for 30 minutes.');
+      return null;
     }
 
     if (!response.ok) {
       console.warn(`[Liquipedia CoD] API returned ${response.status}`);
       return null;
     }
+
+    // Successful request — clear any rate-limit flag
+    codRateLimited = false;
 
     const data = await response.json();
     return data?.parse?.text?.['*'] || null;
@@ -801,8 +805,16 @@ export async function fetchCodMatchMaps(
     .toLowerCase()
     .replace(/\s+/g, '-');
 
+  // Check cache — real data uses 24h TTL, empty "no data" result uses 30min TTL
   const cached = getCached<CodMapData[]>(cacheKey, MATCH_DETAIL_CACHE_TTL);
-  if (cached) return cached;
+  if (cached !== null) {
+    // Hit: either real data or an empty array within the 24h window
+    if (cached.length > 0) return cached;
+    // Empty array: only honour it within the shorter negative-cache window
+    const negCheck = getCached<CodMapData[]>(cacheKey, NEGATIVE_CACHE_TTL);
+    if (negCheck !== null) return negCheck; // still within 30min → skip re-fetch
+    // Negative cache expired (>30min but <24h) → fall through to re-fetch
+  }
 
   try {
     // Strategy 1: Try CDL tournament page (most efficient — one page, many matches)
@@ -850,9 +862,13 @@ export async function fetchCodMatchMaps(
     }
 
     console.log(`[Liquipedia CoD] No map data found for ${homeTeamName} vs ${awayTeamName}`);
+    // Negative-cache: remember "no data" so we don't retry on every match open
+    setCache(cacheKey, []);
     return [];
   } catch (error) {
     console.warn('[Liquipedia CoD] Error fetching match maps:', error);
+    // Negative-cache on error too
+    setCache(cacheKey, []);
     return [];
   }
 }
@@ -872,7 +888,22 @@ export async function enrichCodMatchGames(
 ): Promise<MatchGame[]> {
   if (!games || games.length === 0) return games;
 
-  const mapData = await fetchCodMatchMaps(homeTeamName, awayTeamName, matchDate);
+  // If already rate-limited, skip immediately
+  if (codRateLimited && Date.now() < codRateLimitedUntil) {
+    console.log('[Liquipedia CoD] Skipping enrichment (rate-limited)');
+    return games;
+  }
+
+  // Overall timeout: give up after 8 seconds total
+  const mapData = await Promise.race([
+    fetchCodMatchMaps(homeTeamName, awayTeamName, matchDate),
+    new Promise<CodMapData[]>((resolve) =>
+      setTimeout(() => {
+        console.warn('[Liquipedia CoD] Enrichment timed out after 8s');
+        resolve([]);
+      }, 8_000)
+    ),
+  ]);
   if (mapData.length === 0) return games;
 
   return games.map((game) => {
@@ -914,35 +945,38 @@ export async function enrichCodMatchGames(
 async function fetchKoiMatchesFromCurrentSeason(): Promise<CodMatchDetail[]> {
   const cacheKey = 'cod-season-matches';
   const cached = getCached<CodMatchDetail[]>(cacheKey, TOURNAMENT_CACHE_TTL);
-  if (cached) return cached;
+  if (cached !== null) {
+    if (cached.length > 0) return cached;
+    // Empty: only skip re-fetch within negative-cache window
+    const neg = getCached<CodMatchDetail[]>(cacheKey, NEGATIVE_CACHE_TTL);
+    if (neg !== null) return neg;
+  }
 
   // Try current season page and its sub-pages (stages)
   const pages = [
     CDL_SEASON_PAGE,
-    `${CDL_SEASON_PAGE}/Major_1`,
-    `${CDL_SEASON_PAGE}/Major_2`,
-    `${CDL_SEASON_PAGE}/Major_3`,
-    `${CDL_SEASON_PAGE}/Stage_1`,
     `${CDL_SEASON_PAGE}/Stage_2`,
-    `${CDL_SEASON_PAGE}/Stage_3`,
+    `${CDL_SEASON_PAGE}/Major_2`,
   ];
 
   const allMatches: CodMatchDetail[] = [];
 
   for (const page of pages) {
+    // Stop immediately if we got rate-limited during this loop
+    if (codRateLimited) break;
+
     const html = await fetchPageHtml(page);
     if (!html) continue;
 
     const matches = parseKoiMatchesFromTournamentPage(html);
     allMatches.push(...matches);
 
-    // If we found matches on the main page, we might not need sub-pages
-    if (allMatches.length > 3) break;
+    // If we found matches, stop early
+    if (allMatches.length > 0) break;
   }
 
-  if (allMatches.length > 0) {
-    setCache(cacheKey, allMatches);
-  }
+  // Cache even if empty (negative cache) so we don't re-fetch on every match open
+  setCache(cacheKey, allMatches);
 
   return allMatches;
 }
@@ -951,15 +985,22 @@ async function fetchKoiMatchesFromCurrentSeason(): Promise<CodMatchDetail[]> {
 async function fetchKoiMatchHistory(): Promise<MatchHistoryEntry[]> {
   const cacheKey = 'cod-match-history';
   const cached = getCached<MatchHistoryEntry[]>(cacheKey, TEAM_PAGE_CACHE_TTL);
-  if (cached) return cached;
+  if (cached !== null) {
+    if (cached.length > 0) return cached;
+    const neg = getCached<MatchHistoryEntry[]>(cacheKey, NEGATIVE_CACHE_TTL);
+    if (neg !== null) return neg;
+  }
 
   const html = await fetchPageHtml('KOI');
-  if (!html) return [];
+  if (!html) {
+    // Negative-cache so we don't re-attempt if rate-limited or unavailable
+    setCache(cacheKey, []);
+    return [];
+  }
 
   const entries = parseMatchHistoryFromTeamPage(html);
-  if (entries.length > 0) {
-    setCache(cacheKey, entries);
-  }
+  // Cache even if empty (negative cache) so we don't re-fetch on every match open
+  setCache(cacheKey, entries);
 
   return entries;
 }

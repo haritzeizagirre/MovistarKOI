@@ -161,7 +161,7 @@ export default function TournamentDetailScreen({ route, navigation }: Props) {
 
             {/* Info row */}
             <View style={styles.infoRow}>
-              {tournament.location && (
+              {!!tournament.location && (
                 <View style={styles.infoPill}>
                   <Ionicons
                     name={tournament.location === 'Online' ? 'globe-outline' : 'location-outline'}
@@ -171,7 +171,7 @@ export default function TournamentDetailScreen({ route, navigation }: Props) {
                   <Text style={styles.infoText}>{tournament.location}</Text>
                 </View>
               )}
-              {tournament.totalParticipants && (
+              {!!tournament.totalParticipants && (
                 <View style={styles.infoPill}>
                   <Ionicons name="people-outline" size={14} color={Colors.textMuted} />
                   <Text style={styles.infoText}>{tournament.totalParticipants} {t('tournament.participants')}</Text>
@@ -232,10 +232,10 @@ export default function TournamentDetailScreen({ route, navigation }: Props) {
                   ]}>
                     {phase.name}
                   </Text>
-                  {phase.description && (
+                  {!!phase.description && (
                     <Text style={styles.phaseDesc}>{phase.description}</Text>
                   )}
-                  {phase.qualifyingCount && (
+                  {!!phase.qualifyingCount && (
                     <Text style={styles.phaseQualify}>
                       {t('tournament.qualifyCount', { count: phase.qualifyingCount, defaultValue: `${phase.qualifyingCount} jugadores clasifican` })}
                     </Text>
@@ -279,7 +279,7 @@ export default function TournamentDetailScreen({ route, navigation }: Props) {
                 {/* Info */}
                 <View style={styles.playerInfo}>
                   <Text style={styles.playerName}>{participant.playerName}</Text>
-                  {participant.currentPhaseName && (
+                  {!!participant.currentPhaseName && (
                     <Text style={styles.playerPhase}>{participant.currentPhaseName}</Text>
                   )}
                 </View>
@@ -335,7 +335,7 @@ export default function TournamentDetailScreen({ route, navigation }: Props) {
         )}
 
         {/* External link */}
-        {tournament.externalUrl && (
+        {!!tournament.externalUrl && (
           <TouchableOpacity style={styles.externalLink} onPress={openExternal}>
             <Ionicons name="open-outline" size={18} color={Colors.primary} />
             <Text style={styles.externalLinkText}>

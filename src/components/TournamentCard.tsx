@@ -143,7 +143,7 @@ export default function TournamentCard({ tournament, onPress }: TournamentCardPr
 
         {/* Location + participants info row */}
         <View style={styles.infoRow}>
-          {tournament.location && (
+          {!!tournament.location && (
             <View style={styles.infoPill}>
               <Ionicons
                 name={tournament.location === 'Online' ? 'globe-outline' : 'location-outline'}
@@ -153,7 +153,7 @@ export default function TournamentCard({ tournament, onPress }: TournamentCardPr
               <Text style={styles.infoText}>{tournament.location}</Text>
             </View>
           )}
-          {tournament.totalParticipants && (
+          {!!tournament.totalParticipants && (
             <View style={styles.infoPill}>
               <Ionicons name="people-outline" size={11} color={Colors.textMuted} />
               <Text style={styles.infoText}>{tournament.totalParticipants} {t('tournament.participants')}</Text>
@@ -180,7 +180,7 @@ export default function TournamentCard({ tournament, onPress }: TournamentCardPr
               <Ionicons name="play-circle" size={12} color={Colors.live} style={{ marginRight: 4 }} />
               <Text style={styles.phaseText}>{currentPhase.name}</Text>
             </View>
-            {currentPhase.description && (
+            {!!currentPhase.description && (
               <Text style={styles.phaseDescription}>{currentPhase.description}</Text>
             )}
           </View>
@@ -265,7 +265,7 @@ export default function TournamentCard({ tournament, onPress }: TournamentCardPr
         )}
 
         {/* Stream / external link for live */}
-        {isLive && tournament.streamUrl && (
+        {isLive && !!tournament.streamUrl && (
           <View style={styles.streamRow}>
             <Ionicons name="play-circle" size={14} color={Colors.live} />
             <Text style={styles.streamText}>{t('tournament.watchLive')}</Text>

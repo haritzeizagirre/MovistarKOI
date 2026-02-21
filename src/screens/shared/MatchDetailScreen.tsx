@@ -77,9 +77,10 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                 </TouchableOpacity>
                 <View style={styles.headerTitles}>
                     <Text style={styles.headerTournament} numberOfLines={1}>{match.tournament}</Text>
-                    {match.matchType && <Text style={styles.headerSubtitle}>{match.matchType}</Text>}
+                    {!!match.matchType && <Text style={styles.headerSubtitle}>{match.matchType}</Text>}
                 </View>
-                <View style={{ width: 24 }} /> {/* Balance */}
+                {/* Balance */}
+                <View style={{ width: 24 }} />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -184,12 +185,12 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                     <View style={styles.gameDetailsCard}>
                         {/* Game Meta Content */}
                         <View style={styles.gameMetaContainer}>
-                            {activeGame.beginAt && (
+                            {!!activeGame.beginAt && (
                                 <Text style={styles.gameMetaText}>
                                     {new Date(activeGame.beginAt).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
                                 </Text>
                             )}
-                            {activeGame.length && (
+                            {!!activeGame.length && (
                                 <View style={styles.gameDurationBadge}>
                                     <Ionicons name="time-outline" size={14} color={Colors.textSecondary} />
                                     <Text style={styles.gameDurationText}>
@@ -202,15 +203,15 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                         {/* Map info for Valorant/CoD */}
                         {activeGame.map && (
                             <View style={styles.mapContainer}>
-                                {activeGame.map.imageUrl && (
+                                {!!activeGame.map.imageUrl && (
                                     <Image source={{ uri: activeGame.map.imageUrl }} style={styles.mapImage} />
                                 )}
                                 <View style={styles.mapOverlay}>
                                     <Text style={styles.mapNameText}>{activeGame.map.name}</Text>
-                                    {activeGame.gameMode && (
+                                    {!!activeGame.gameMode && (
                                         <Text style={styles.gameModeText}>{activeGame.gameMode}</Text>
                                     )}
-                                    {activeGame.homeTeamScore !== undefined && activeGame.awayTeamScore !== undefined && (
+                                    {activeGame.homeTeamScore != null && activeGame.awayTeamScore != null && (
                                         <Text style={styles.mapScoreText}>
                                             {activeGame.homeTeamScore} - {activeGame.awayTeamScore}
                                         </Text>
@@ -219,7 +220,7 @@ export default function MatchDetailScreen({ route, navigation }: Props) {
                             </View>
                         )}
                         {/* Game mode without map (CoD fallback when map image unavailable) */}
-                        {!activeGame.map && activeGame.gameMode && (
+                        {!activeGame.map && !!activeGame.gameMode && (
                             <View style={styles.gameModeBadge}>
                                 <Ionicons name="game-controller-outline" size={16} color={Colors.textSecondary} />
                                 <Text style={styles.gameModeBadgeText}>{activeGame.gameMode}</Text>

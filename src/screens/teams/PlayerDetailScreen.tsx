@@ -92,7 +92,7 @@ export default function PlayerDetailScreen() {
                 {FLAG_EMOJIS[player.nationality] || '🏳️'} {player.nationality}
               </Text>
             </View>
-            {player.age && (
+            {!!player.age && (
               <View style={styles.infoItem}>
                 <Text style={styles.infoLabel}>{t('teams.age')}</Text>
                 <Text style={styles.infoValue}>{player.age}</Text>
@@ -106,7 +106,7 @@ export default function PlayerDetailScreen() {
           <View style={styles.socialSection}>
             <Text style={styles.sectionTitle}>{t('teams.socialLinks')}</Text>
             <View style={styles.socialRow}>
-              {player.socialLinks.twitter && (
+              {!!player.socialLinks.twitter && (
                 <TouchableOpacity
                   style={styles.socialButton}
                   onPress={() => Linking.openURL(player.socialLinks!.twitter!)}
@@ -115,7 +115,7 @@ export default function PlayerDetailScreen() {
                   <Text style={styles.socialLabel}>Twitter</Text>
                 </TouchableOpacity>
               )}
-              {player.socialLinks.twitch && (
+              {!!player.socialLinks.twitch && (
                 <TouchableOpacity
                   style={styles.socialButton}
                   onPress={() => Linking.openURL(player.socialLinks!.twitch!)}
